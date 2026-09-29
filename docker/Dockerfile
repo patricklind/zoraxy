@@ -38,7 +38,7 @@ FROM docker.io/alpine:3.22
 RUN apk add --update --no-cache tzdata python3 sudo netcat-openbsd libressl-dev openssh ca-certificates libc6-compat libstdc++ &&\
     rm -rf /sbin/apk /var/cache/apk/* /tmp/* # Simple cleanup
 
-COPY --chmod=700 ./entrypoint.py /opt/zoraxy/
+COPY --chmod=700 ./docker/entrypoint.py /opt/zoraxy/
 
 COPY --from=build-zerotier /usr/local/bin/zerotier-one /usr/local/bin/zerotier-one
 COPY --from=build-zoraxy /usr/local/bin/zoraxy /usr/local/bin/zoraxy

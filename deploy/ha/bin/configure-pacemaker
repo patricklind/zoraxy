@@ -36,7 +36,7 @@ pcs resource create zoraxy-vip ocf:heartbeat:IPaddr2 \
 
 pcs resource group add zoraxy-stack zoraxy-fs zoraxy-service zoraxy-vip
 pcs constraint colocation add zoraxy-stack with promoted drbd-zoraxy-clone INFINITY
-pcs constraint order promote drbd-zoraxy-clone then start zoraxy-stack
+pcs constraint order promote drbd-zoraxy-clone "then" start zoraxy-stack
 
 pcs resource defaults update resource-stickiness=200 migration-threshold=1
 pcs resource cleanup

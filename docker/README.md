@@ -131,9 +131,7 @@ For those looking to use custom plugins, build your plugins and place them insid
 ### Building
 
 To build the Docker image:
-  - Check out the repository/branch.
-  - Copy the Zoraxy `src/` directory into the `docker/` (here) directory.
-  - Run the build command with `docker build -t zoraxy_build .`
-  - You can now use the image `zoraxy_build`
-    - If you wish to change the image tag name, then modify `zoraxy_build` in the previous step and then build again.
 
+- Check out the repository/branch and run the command from the repository root.
+- Build with `docker build -f docker/Dockerfile -t zoraxy_build .`.
+- To use another image name, replace `zoraxy_build` in the command.
