@@ -47,7 +47,13 @@ and `1` is a host route.
 
 Unknown top-level fields, unsupported versions, invalid proxy types, empty
 domains and duplicate case-insensitive host names are rejected before swap.
-The adapter is disabled by default. Enable exactly one role per process:
+The adapter is disabled by default. Select the backend explicitly with
+`ZORAXY_CONFIG_BACKEND=local|postgresql`. `local` retains the original
+BoltDB/LevelDB and file-backed behavior. `postgresql` currently becomes
+authoritative for the migrated HTTP-routing document; a local database remains
+in use for configuration domains that have not been migrated yet.
+
+With the PostgreSQL backend, enable exactly one role per process:
 
 - `ZORAXY_CONFIGSTORE_MODE=control-plane` mounts the revision and node APIs on
   Zoraxy's authenticated management router. Startup is rejected when `NOAUTH`
@@ -62,6 +68,10 @@ test environments but exposes the secret through the process environment.
 `verify` is the production default: it refuses startup unless schema version 1
 is already installed. `apply` performs the idempotent version-1 migration in a
 single transaction. A data node becomes unready if its revision follower exits.
+
+Docker is not required on the target node. Proxmox LXC installations created
+with the community helper are supported through a persistent systemd drop-in;
+see [`lxc/README.md`](lxc/README.md).
 
 ## Startup guarantees
 
@@ -88,6 +98,7 @@ Apply the schema once from a controlled migration job:
 
 ```sh
 docker run --rm --network <postgres-network> \
+  -e ZORAXY_CONFIG_BACKEND=postgresql \
   -e ZORAXY_CONFIGSTORE_MODE=control-plane \
   -e ZORAXY_CONFIGSTORE_MIGRATION_MODE=apply \
   -e ZORAXY_CONFIGSTORE_DSN_FILE=/run/secrets/configstore-dsn \
@@ -129,6 +140,17 @@ A missing `If-Match` returns 428, a stale revision returns 409, invalid JSON
 returns 400, and a routing document that cannot be activated returns 422. A
 successful commit returns 201 with the new `ETag`; data-plane convergence is
 reported separately by `GET /api/cluster/nodes`.
+
+Two additional authenticated, read-only migration endpoints are available on
+the control plane:
+
+- `GET /api/cluster/routing/export` exports the current local HTTP-routing
+  runtime as a deterministically ordered version-1 revision document. Treat the
+  response as secret because proxy authentication data may be present.
+- `GET /api/cluster/routing/shadow` compares canonical SHA-256 values for the
+  local runtime and current PostgreSQL revision. JSON whitespace and host order
+  do not cause false mismatches. `matches=true` is a migration signal, not proof
+  that the still-unmigrated configuration domains are equivalent.
 
 Run the PostgreSQL-backed repository and convergence tests entirely in Docker:
 

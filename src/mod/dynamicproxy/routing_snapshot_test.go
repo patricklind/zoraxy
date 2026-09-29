@@ -81,6 +81,7 @@ func TestRoutingSnapshotConcurrentReadersAndSwaps(t *testing.T) {
 				_ = router.RootEndpoint()
 				_, _ = router.LoadProxyEndpoint("host.example")
 				router.RangeProxyEndpoints(func(_, _ any) bool { return true })
+				_ = router.CurrentRoutingSnapshot()
 			}
 		}()
 	}

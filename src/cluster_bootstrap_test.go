@@ -20,10 +20,14 @@ func TestLoadClusterConfigDefaultsToDisabled(t *testing.T) {
 	if config.mode != clusterModeDisabled {
 		t.Fatalf("mode = %q", config.mode)
 	}
+	if config.backend != configBackendLocal {
+		t.Fatalf("backend = %q", config.backend)
+	}
 }
 
 func TestLoadClusterConfigReadsDSNSecret(t *testing.T) {
 	config, err := loadClusterConfig(clusterTestEnvironment(map[string]string{
+		"ZORAXY_CONFIG_BACKEND":              "postgresql",
 		"ZORAXY_CONFIGSTORE_MODE":            "data-plane",
 		"ZORAXY_CONFIGSTORE_MIGRATION_MODE":  "verify",
 		"ZORAXY_CONFIGSTORE_DSN_FILE":        "/run/secrets/configstore-dsn",
@@ -45,6 +49,16 @@ func TestLoadClusterConfigReadsDSNSecret(t *testing.T) {
 
 func TestLoadClusterConfigRejectsUnsafeAmbiguity(t *testing.T) {
 	tests := []map[string]string{
+		{
+			"ZORAXY_CONFIG_BACKEND":   "local",
+			"ZORAXY_CONFIGSTORE_MODE": "data-plane",
+		},
+		{
+			"ZORAXY_CONFIG_BACKEND": "postgresql",
+		},
+		{
+			"ZORAXY_CONFIG_BACKEND": "mysql",
+		},
 		{
 			"ZORAXY_CONFIGSTORE_MODE":           "combined",
 			"ZORAXY_CONFIGSTORE_MIGRATION_MODE": "verify",

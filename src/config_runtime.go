@@ -92,21 +92,23 @@ func canonicalRoutingRevision(payload json.RawMessage) (json.RawMessage, error) 
 }
 
 func routingRevisionFromRouter(router *dynamicproxy.Router) (json.RawMessage, error) {
-	if router == nil || router.RootEndpoint() == nil {
+	if router == nil {
+		return nil, errors.New("dynamic proxy router is required")
+	}
+	snapshot := router.CurrentRoutingSnapshot()
+	if snapshot.Root == nil {
 		return nil, errors.New("dynamic proxy root route is required")
 	}
 	document := routingRevisionDocument{
 		Version: routingRevisionVersion,
-		Root:    *dynamicproxy.CopyEndpoint(router.RootEndpoint()),
+		Root:    *dynamicproxy.CopyEndpoint(snapshot.Root),
 		Hosts:   []dynamicproxy.ProxyEndpoint{},
 	}
-	router.RangeProxyEndpoints(func(_, value any) bool {
-		endpoint, ok := value.(*dynamicproxy.ProxyEndpoint)
-		if ok && endpoint != nil {
+	for _, endpoint := range snapshot.Endpoints {
+		if endpoint != nil {
 			document.Hosts = append(document.Hosts, *dynamicproxy.CopyEndpoint(endpoint))
 		}
-		return true
-	})
+	}
 	sortRoutingHosts(document.Hosts)
 	payload, err := json.Marshal(document)
 	if err != nil {

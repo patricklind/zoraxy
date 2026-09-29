@@ -102,6 +102,7 @@ Variables are the same as those in [Start Parameters](https://github.com/tobychu
 | `VERSION` | `false` (Boolean) | Show version of this server. |
 | `WEBROOT` | `./www` (String) | Static web server root folder. Only allow change in start parameters. |
 | `ZEROTIER` | `false` (Boolean) | Enable ZeroTier functionality for GAN. |
+| `ZORAXY_CONFIG_BACKEND` | `local` (String) | Explicit configuration backend: `local` or `postgresql`. PostgreSQL currently covers the migrated HTTP-routing domain. |
 | `ZORAXY_NODE_ROLE` | `standalone` (String) | Role reported by health/status endpoints. Use `data-plane` for a PostgreSQL-backed traffic node. |
 | `ZORAXY_CONFIGSTORE_MODE` | `disabled` (String) | `disabled`, `control-plane`, or `data-plane`. See `deploy/active-active`. |
 | `ZORAXY_CONFIGSTORE_MIGRATION_MODE` | none | Required when configstore is enabled: `verify` or `apply`. |
@@ -130,6 +131,7 @@ services:
   zoraxy:
     environment:
       ZORAXY_NODE_ROLE: data-plane
+      ZORAXY_CONFIG_BACKEND: postgresql
       ZORAXY_CONFIGSTORE_MODE: data-plane
       ZORAXY_CONFIGSTORE_MIGRATION_MODE: verify
       ZORAXY_CONFIGSTORE_DSN_FILE: /run/secrets/configstore-dsn

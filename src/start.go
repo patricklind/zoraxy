@@ -108,6 +108,8 @@ func startupSequence() {
 		backendType = dbinc.BackendLevelDB
 	case "boltdb":
 		backendType = dbinc.BackendBoltDB
+	case "postgresql":
+		log.Fatal("-db=postgresql is not valid: use ZORAXY_CONFIG_BACKEND=postgresql; -db selects the local runtime database for unmigrated state")
 	}
 	l.PrintAndLog("database", "Using "+backendType.String()+" as the database backend", nil)
 	db, err := database.NewDatabase(*path_database, backendType)

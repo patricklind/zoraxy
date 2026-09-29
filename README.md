@@ -111,6 +111,11 @@ The separate [`deploy/active-active`](deploy/active-active/README.md) directory
 documents the experimental PostgreSQL control plane and data-node bootstrap.
 It supports atomic HTTP-routing revisions, but it is not yet a production
 replacement for every legacy file-backed configuration domain.
+The same bootstrap supports Docker and native systemd installations, including
+LXC containers created by the Proxmox community Zoraxy helper.
+Choose the configuration backend with `ZORAXY_CONFIG_BACKEND=local|postgresql`;
+the existing `-db`/`DB` option continues to select only the local database
+engine and does not accept `postgresql`.
 
 ### Start Parameters
 

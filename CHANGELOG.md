@@ -7,6 +7,8 @@
 + Add explicit `control-plane` and `data-plane` bootstrap modes. Data-plane
   startup validates and atomically activates an existing routing revision
   before proxy listeners open and does not load legacy HTTP routing files.
++ Add deterministic routing export/shadow comparison endpoints and a persistent
+  systemd environment drop-in for Proxmox community-script LXC installations.
 
 # v3.3.4 22 Aug 2026
 

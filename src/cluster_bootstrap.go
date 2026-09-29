@@ -17,12 +17,15 @@ import (
 )
 
 const (
+	configBackendLocal      = "local"
+	configBackendPostgreSQL = "postgresql"
 	clusterModeDisabled     = "disabled"
 	clusterModeControlPlane = "control-plane"
 	clusterModeDataPlane    = "data-plane"
 )
 
 type clusterConfig struct {
+	backend        string
 	mode           string
 	dsn            string
 	migrationMode  string
@@ -35,14 +38,33 @@ type secretReader func(string) ([]byte, error)
 
 func loadClusterConfig(getenv environmentLookup, readFile secretReader) (clusterConfig, error) {
 	config := clusterConfig{
+		backend:        strings.ToLower(strings.TrimSpace(getenv("ZORAXY_CONFIG_BACKEND"))),
 		mode:           strings.ToLower(strings.TrimSpace(getenv("ZORAXY_CONFIGSTORE_MODE"))),
 		migrationMode:  strings.ToLower(strings.TrimSpace(getenv("ZORAXY_CONFIGSTORE_MIGRATION_MODE"))),
 		pollInterval:   time.Second,
 		startupTimeout: 10 * time.Second,
 	}
-	if config.mode == "" || config.mode == clusterModeDisabled {
+	if config.backend == "" {
+		if config.mode == "" || config.mode == clusterModeDisabled {
+			config.backend = configBackendLocal
+		} else {
+			// Preserve compatibility with the first configstore preview, where an
+			// enabled role implied PostgreSQL.
+			config.backend = configBackendPostgreSQL
+		}
+	}
+	if config.backend != configBackendLocal && config.backend != configBackendPostgreSQL {
+		return clusterConfig{}, fmt.Errorf("invalid ZORAXY_CONFIG_BACKEND %q", config.backend)
+	}
+	if config.backend == configBackendLocal {
+		if config.mode != "" && config.mode != clusterModeDisabled {
+			return clusterConfig{}, errors.New("local configuration backend cannot use a configstore cluster role")
+		}
 		config.mode = clusterModeDisabled
 		return config, nil
+	}
+	if config.mode == "" || config.mode == clusterModeDisabled {
+		return clusterConfig{}, errors.New("PostgreSQL configuration backend requires control-plane or data-plane mode")
 	}
 	if config.mode != clusterModeControlPlane && config.mode != clusterModeDataPlane {
 		return clusterConfig{}, fmt.Errorf("invalid ZORAXY_CONFIGSTORE_MODE %q", config.mode)

@@ -1,0 +1,50 @@
+# Proxmox LXC deployment
+
+The community helper installs the released Zoraxy binary in `/opt/zoraxy`,
+runs it as `zoraxy.service`, and keeps `/opt/zoraxy` as its working directory.
+The cluster bootstrap reads environment variables directly, so it works without
+Docker-specific entrypoint translation.
+
+Create the LXC from the Proxmox host with the upstream helper:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/zoraxy.sh)"
+```
+
+The helper downloads the latest published GitHub release. Verify that the
+installed binary version contains the active/active bootstrap before enabling
+cluster mode; unreleased repository changes are not installed by that command.
+
+Inside the LXC, install the supplied systemd drop-in and environment template:
+
+```sh
+install -d -m 0750 /etc/zoraxy
+install -m 0640 cluster.env.example /etc/zoraxy/cluster.env
+install -d -m 0755 /etc/systemd/system/zoraxy.service.d
+install -m 0644 20-cluster.conf /etc/systemd/system/zoraxy.service.d/20-cluster.conf
+```
+
+Write the complete PostgreSQL DSN as one line in
+`/etc/zoraxy/configstore.dsn`, owned by root with mode `0600`. Edit
+`/etc/zoraxy/cluster.env` for either `control-plane` or `data-plane`, then run:
+
+```sh
+systemctl daemon-reload
+systemctl restart zoraxy
+systemctl status zoraxy --no-pager
+curl --fail http://127.0.0.1:8000/health/ready
+```
+
+For a data node, readiness must report equal non-zero desired/applied revisions
+and `config_store=true`. The process performs PostgreSQL/schema preflight and
+initial revision validation before opening proxy listeners.
+
+The community update action replaces `/opt/zoraxy/zoraxy` and restarts the
+service. The `/etc/systemd/system/zoraxy.service.d` override and `/etc/zoraxy`
+secrets survive that update. Before updating, confirm the target release still
+supports the configured schema version and keep the previous binary available
+for rollback.
+
+Do not configure two LXC data nodes against a shared `/opt/zoraxy` filesystem.
+Each node keeps separate local runtime state; PostgreSQL is shared only for the
+transactional configuration domains.

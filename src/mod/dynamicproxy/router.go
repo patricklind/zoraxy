@@ -53,6 +53,26 @@ func (router *Router) LoadProxyEndpoint(key string) (*ProxyEndpoint, bool) {
 	return endpoint, ok
 }
 
+// CurrentRoutingSnapshot returns root and host pointers from one atomically
+// loaded routing state. Callers that serialize state therefore cannot combine
+// the root from one revision with hosts from another.
+func (router *Router) CurrentRoutingSnapshot() RoutingSnapshot {
+	state := router.currentRoutingState()
+	snapshot := RoutingSnapshot{
+		Root:      state.root,
+		Endpoints: make(map[string]*ProxyEndpoint),
+	}
+	state.endpoints.Range(func(key, value any) bool {
+		lookupKey, keyOK := key.(string)
+		endpoint, endpointOK := value.(*ProxyEndpoint)
+		if keyOK && endpointOK {
+			snapshot.Endpoints[lookupKey] = endpoint
+		}
+		return true
+	})
+	return snapshot
+}
+
 // SwapRoutingSnapshot atomically publishes a complete prepared routing
 // revision. Requests already in progress retain their previously loaded state.
 func (router *Router) SwapRoutingSnapshot(snapshot RoutingSnapshot) (RoutingSnapshot, error) {
