@@ -34,6 +34,12 @@ type Activator interface {
 	Activate(ctx context.Context, revision Revision) error
 }
 
+type ActivatorFunc func(context.Context, Revision) error
+
+func (f ActivatorFunc) Activate(ctx context.Context, revision Revision) error {
+	return f(ctx, revision)
+}
+
 // NodeStatusStore records data-plane convergence independently from revision
 // commits. Reporting failures must never roll back an already active runtime.
 type NodeStatusStore interface {

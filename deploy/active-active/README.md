@@ -46,8 +46,21 @@ and `1` is a host route.
 
 Unknown top-level fields, unsupported versions, invalid proxy types, empty
 domains and duplicate case-insensitive host names are rejected before swap.
-The adapter remains disabled in the main process until PostgreSQL bootstrap,
-authentication and the migration mode are configured explicitly.
+The adapter is disabled by default. Enable exactly one role per process:
+
+- `ZORAXY_CONFIGSTORE_MODE=control-plane` mounts the revision and node APIs on
+  Zoraxy's authenticated management router. Startup is rejected when `NOAUTH`
+  is enabled.
+- `ZORAXY_CONFIGSTORE_MODE=data-plane` requires an existing revision, validates
+  and activates it before readiness succeeds, then follows later revisions.
+
+Both modes require `ZORAXY_CONFIGSTORE_MIGRATION_MODE=verify|apply` and a
+PostgreSQL connection. Supply the full connection string through a Docker
+secret with `ZORAXY_CONFIGSTORE_DSN_FILE`; `ZORAXY_CONFIGSTORE_DSN` exists for
+test environments but exposes the secret through the process environment.
+`verify` is the production default: it refuses startup unless schema version 1
+is already installed. `apply` performs the idempotent version-1 migration in a
+single transaction. A data node becomes unready if its revision follower exits.
 
 Run the PostgreSQL-backed repository and convergence tests entirely in Docker:
 

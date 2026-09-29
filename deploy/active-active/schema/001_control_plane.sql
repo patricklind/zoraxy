@@ -1,5 +1,10 @@
 BEGIN;
 
+CREATE TABLE IF NOT EXISTS configstore_schema (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    version   integer NOT NULL CHECK (version > 0)
+);
+
 CREATE TABLE IF NOT EXISTS config_revisions (
     revision       bigint PRIMARY KEY CHECK (revision > 0),
     payload        jsonb NOT NULL,
@@ -34,5 +39,8 @@ CREATE TABLE IF NOT EXISTS controller_leases (
     valid_until timestamptz NOT NULL,
     CHECK (lease_name = 'certificate-controller')
 );
+
+INSERT INTO configstore_schema (singleton, version) VALUES (true, 1)
+ON CONFLICT (singleton) DO NOTHING;
 
 COMMIT;

@@ -393,7 +393,7 @@ func RegisterAuthAPIs(requireAuth bool, targetMux *http.ServeMux) {
 }
 
 /* Register all the APIs */
-func initAPIs(targetMux *http.ServeMux) {
+func initAPIs(targetMux *http.ServeMux) *auth.RouterDef {
 	authRouter := auth.NewManagedHTTPRouter(auth.RouterOption{
 		AuthAgent:   authAgent,
 		RequireAuth: requireAuth,
@@ -464,4 +464,5 @@ func initAPIs(targetMux *http.ServeMux) {
 
 	//Debug
 	authRouter.HandleFunc("/api/info/pprof", pprof.Index)
+	return authRouter
 }

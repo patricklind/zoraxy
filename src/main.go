@@ -135,7 +135,7 @@ func main() {
 
 	//Initiate APIs
 	requireAuth = !(*noauth)
-	initAPIs(webminPanelMux)
+	authenticatedManagementRouter := initAPIs(webminPanelMux)
 	initRestAPI(pluginAPIMux)
 
 	// Create a entry mux to accept all management interface requests
@@ -143,6 +143,10 @@ func main() {
 	registerHealthEndpoints(entryMux)                    //Public health endpoints for local HA orchestration
 	entryMux.Handle("/plugin/", pluginAPIMux)            //For plugins API access
 	entryMux.Handle("/", csrfMiddleware(webminPanelMux)) //For webmin UI access, require csrf token
+	preparedCluster, err := prepareCluster()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Start the reverse proxy server in go routine
 	go func() {
@@ -152,6 +156,9 @@ func main() {
 	// Wait for dynamicProxyRouter to be initialized before proceeding
 	// See ReverseProxyInit() in reverseproxy.go
 	<-dynamicProxyRouterReady
+	if err := preparedCluster.Start(authenticatedManagementRouter); err != nil {
+		log.Fatal(err)
+	}
 
 	//Start the finalize sequences
 	finalSequence()

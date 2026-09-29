@@ -25,8 +25,11 @@ func TestPostgresStoreIntegration(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		t.Fatal(err)
+	if err := VerifySchema(ctx, db); err != nil {
+		t.Fatalf("verify initialized schema: %v", err)
+	}
+	if err := ApplySchema(ctx, db); err != nil {
+		t.Fatalf("idempotent schema migration: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `TRUNCATE config_revisions, node_status`); err != nil {
 		t.Fatal(err)

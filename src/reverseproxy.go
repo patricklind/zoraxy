@@ -31,6 +31,7 @@ const (
 var (
 	dynamicProxyRouter      *dynamicproxy.Router
 	dynamicProxyRouterReady = make(chan bool, 1)
+	dynamicProxyRouterConfigured = make(chan struct{}, 1)
 )
 
 type globalProxyTimeoutSettings struct {
@@ -259,23 +260,29 @@ func ReverseProxyInit() {
 		Load all conf from files
 
 	*/
-	confs, _ := filepath.Glob(CONF_HTTP_PROXY + "/*.config")
-	for _, conf := range confs {
-		err := LoadReverseProxyConfig(conf)
-		if err != nil {
-			SystemWideLogger.PrintAndLog("proxy-config", "Failed to load config file: "+filepath.Base(conf), err)
-			continue
+	if configStoreDataPlaneMode {
+		// The main startup goroutine validates and atomically installs the
+		// authoritative revision before releasing this listener barrier.
+		<-dynamicProxyRouterConfigured
+	} else {
+		confs, _ := filepath.Glob(CONF_HTTP_PROXY + "/*.config")
+		for _, conf := range confs {
+			err := LoadReverseProxyConfig(conf)
+			if err != nil {
+				SystemWideLogger.PrintAndLog("proxy-config", "Failed to load config file: "+filepath.Base(conf), err)
+				continue
+			}
 		}
-	}
 
-	if dynamicProxyRouter.RootEndpoint() == nil {
-		//Root config not set (new deployment?), use internal static web server as root
-		defaultRootRouter, err := GetDefaultRootConfig()
-		if err != nil {
-			SystemWideLogger.PrintAndLog("proxy-config", "Failed to generate default root routing", err)
-			return
+		if dynamicProxyRouter.RootEndpoint() == nil {
+			//Root config not set (new deployment?), use internal static web server as root
+			defaultRootRouter, err := GetDefaultRootConfig()
+			if err != nil {
+				SystemWideLogger.PrintAndLog("proxy-config", "Failed to generate default root routing", err)
+				return
+			}
+			dynamicProxyRouter.SetProxyRouteAsRoot(defaultRootRouter)
 		}
-		dynamicProxyRouter.SetProxyRouteAsRoot(defaultRootRouter)
 	}
 
 	//Start Service

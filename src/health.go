@@ -11,6 +11,7 @@ import (
 var (
 	desiredConfigRevision atomic.Uint64
 	appliedConfigRevision atomic.Uint64
+	configStoreReady      atomic.Bool
 )
 
 type healthResponse struct {
@@ -45,6 +46,9 @@ func currentReadinessChecks() map[string]bool {
 	if dynamicProxyRouter != nil {
 		checks["proxy_config"] = dynamicProxyRouter.RootEndpoint() != nil
 		checks["proxy_listener"] = dynamicProxyRouter.IsReady()
+	}
+	if mode := strings.ToLower(strings.TrimSpace(os.Getenv("ZORAXY_CONFIGSTORE_MODE"))); mode != "" && mode != clusterModeDisabled {
+		checks["config_store"] = configStoreReady.Load()
 	}
 	return checks
 }
