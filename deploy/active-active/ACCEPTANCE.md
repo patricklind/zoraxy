@@ -33,6 +33,8 @@ success as full product acceptance.
 | Long-lived request during update | Existing request completes on old snapshot | | |
 | HTTP/HTTPS/WebSocket | Traffic succeeds through both nodes | | |
 | Rollback revision | New revision restores last known-good behavior | | |
+| Full Go race suite | `go test -race ./...` passes in Docker | | |
+| Static/build gates | `go vet ./...` and `go build ./...` pass in Docker | | |
 
 Full active/active acceptance remains blocked until TLS/certificates, ACME,
 access rules, authentication, redirects and stream proxies use the same

@@ -47,7 +47,8 @@ On both Zoraxy nodes:
    service ports, Corosync, DRBD replication and fencing traffic explicitly.
 
 The Compose file deliberately excludes `/var/run/docker.sock`, selects BoltDB,
-disables mDNS and uses `/health/ready` as its healthcheck.
+sets `ZORAXY_CONFIG_BACKEND=local`, disables mDNS and uses `/health/ready` as
+its healthcheck. PostgreSQL cluster roles must remain disabled in this mode.
 
 ## Configure DRBD
 
@@ -106,6 +107,11 @@ Record timestamps and results for each scenario in `FAILOVER-ACCEPTANCE.md`:
    host; verify the change after promotion.
 6. Exercise HTTP, HTTPS, WebSocket, TCP stream proxy and UDP/QUIC.
 7. Run `ZORAXY_VIP=<vip> bin/smoke-test`; readiness must return within 60s.
+
+The ready response must return HTTP 200 with `node_role=active-passive`, equal
+zero configuration revision fields, and true `database`, `proxy_config` and
+`proxy_listener` values under `checks`. Revision zero is expected because this
+mode uses the local backend.
 
 An acceptance run fails if both nodes are Primary/mounted, fencing is skipped,
 the VIP exists on both nodes, readiness exceeds 60 seconds, or a committed

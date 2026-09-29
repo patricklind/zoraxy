@@ -11,6 +11,8 @@
   systemd environment drop-in for Proxmox community-script LXC installations.
 + Fix data races during rate-limiter shutdown, statistics recording/export and
   uptime connection-leak testing. Statistics writes now complete before return.
++ Synchronize the root, Docker, HA, active/active and Proxmox LXC documentation
+  with the implemented backend selection, health response and verification flow.
 
 # v3.3.4 22 Aug 2026
 

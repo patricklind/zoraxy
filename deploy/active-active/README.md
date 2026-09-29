@@ -121,7 +121,23 @@ curl --fail http://<node-management-ip>:8000/health/ready
 ```
 
 The response must include `node_role=data-plane`, equal non-zero
-`config_revision` and `applied_revision`, and `config_store=true`.
+`config_revision` and `applied_revision`, and `checks.config_store=true`.
+
+## Environment reference
+
+| Variable | Required value or default | Purpose |
+| --- | --- | --- |
+| `ZORAXY_CONFIG_BACKEND` | `local` (default) or `postgresql` | Selects the authoritative configuration backend |
+| `ZORAXY_CONFIGSTORE_MODE` | `control-plane` or `data-plane` with PostgreSQL | Selects exactly one process role |
+| `ZORAXY_CONFIGSTORE_MIGRATION_MODE` | `verify` or `apply` | Verifies the exact schema or installs schema version 1 |
+| `ZORAXY_CONFIGSTORE_DSN_FILE` | Preferred secret-file path | Reads the complete PostgreSQL DSN without an environment secret |
+| `ZORAXY_CONFIGSTORE_DSN` | Test environments only | Supplies the DSN directly; mutually exclusive with the file variable |
+| `ZORAXY_CONFIGSTORE_POLL_INTERVAL` | `1s` | Positive Go duration between revision checks |
+| `ZORAXY_CONFIGSTORE_STARTUP_TIMEOUT` | `10s` | Positive Go duration for PostgreSQL/schema startup preflight |
+| `ZORAXY_NODE_ROLE` | `standalone` when unset | Label exposed in health and status responses |
+
+`DB=boltdb|leveldb|auto` still controls the local database used by unmigrated
+domains. `DB=postgresql` is rejected with an explicit startup error.
 
 ## API behavior
 
@@ -159,6 +175,27 @@ docker compose -f deploy/active-active/compose.test.yaml up \
   --build --abort-on-container-exit --exit-code-from configstore-test
 docker compose -f deploy/active-active/compose.test.yaml down --volumes
 ```
+
+Run the complete Go safety gates from a writable copy inside Docker. Several
+legacy tests create temporary databases beside their package, so a read-only
+source mount alone is insufficient:
+
+```sh
+docker run --rm -v "$PWD":/workspace:ro golang:1.26 sh -c \
+  'cp -a /workspace /tmp/zoraxy && cd /tmp/zoraxy/src && \
+   go vet ./... && go test -race ./... && go build ./...'
+```
+
+## Troubleshooting
+
+| Symptom | Cause to check first |
+| --- | --- |
+| Process exits before listeners open | Missing DSN, wrong schema version, invalid mode or no initial revision |
+| Ready returns 503 with `checks.config_store=false` | Revision follower stopped or initial activation failed |
+| Desired revision is above applied revision | Candidate validation failed; inspect `last_error` in `/api/cluster/nodes` |
+| Control plane refuses startup | Management authentication is disabled (`NOAUTH=true`) |
+| `DB=postgresql` startup error | PostgreSQL must be selected with `ZORAXY_CONFIG_BACKEND`, not the local DB selector |
+| LXC works locally but ignores cluster variables | Missing systemd drop-in, unreadable DSN file or installed release predates this bootstrap |
 
 ## Remaining implementation order
 

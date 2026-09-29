@@ -26,7 +26,6 @@ docker run -d \
   -p 8000:8000 \
   -v /path/to/zoraxy/config/:/opt/zoraxy/config/ \
   -v /path/to/zoraxy/plugin/:/opt/zoraxy/plugin/ \
-  -v /var/run/docker.sock:/var/run/docker.sock \
   -e FASTGEOIP="true" \
   -e TZ="America/New_York" \
   zoraxydocker/zoraxy:latest
@@ -48,7 +47,6 @@ services:
     volumes:
       - /path/to/zoraxy/config/:/opt/zoraxy/config/
       - /path/to/zoraxy/plugin/:/opt/zoraxy/plugin/
-      - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -71,12 +69,20 @@ services:
 |:-|:-|
 | `/opt/zoraxy/config/` | Zoraxy configuration. |
 | `/opt/zoraxy/plugin/` | Zoraxy plugins. |
-| `/var/run/docker.sock` | Docker socket. Used for additional functionality with Zoraxy. |
 
 ### Extra Hosts
 | Host | Details |
 |:-|:-|
 | `host.docker.internal:host-gateway` | Resolves host.docker.internal to the host’s gateway IP on the Docker bridge network, allowing containers to access services running on the host machine. |
+
+### Docker socket
+
+The default examples deliberately do not mount `/var/run/docker.sock`. A direct
+socket mount gives the container control over the Docker host and is not needed
+for normal reverse-proxy operation. If container discovery is required, place a
+restricted Docker socket proxy in front of the daemon and expose only the
+read-only API operations the integration uses. Do not add a writable socket
+mount to either HA mode.
 
 ### Environment
 
@@ -142,6 +148,21 @@ secrets:
   configstore-dsn:
     file: ./secrets/configstore-dsn
 ```
+
+### Health endpoints
+
+`GET` and `HEAD` are supported on both unauthenticated endpoints. Restrict port
+8000 to the management network even though these responses contain no secrets.
+
+- `/health/live` returns HTTP 200 while the process can serve its management
+  handler. It is a process check, not permission to receive proxy traffic.
+- `/health/ready` returns HTTP 200 only when every reported check is true;
+  otherwise it returns HTTP 503. Checks cover the local database, loaded proxy
+  configuration, bound proxy listener and, when enabled, PostgreSQL configstore.
+
+In PostgreSQL data-plane mode verify that `node_role` is `data-plane`,
+`config_revision` equals the non-zero `applied_revision`, and
+`checks.config_store` is `true`.
 
 ### ZeroTier
 

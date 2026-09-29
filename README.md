@@ -117,6 +117,24 @@ Choose the configuration backend with `ZORAXY_CONFIG_BACKEND=local|postgresql`;
 the existing `-db`/`DB` option continues to select only the local database
 engine and does not accept `postgresql`.
 
+| Deployment | Configuration source | Current recommendation |
+| --- | --- | --- |
+| Single node | Local BoltDB/LevelDB and files | Development and non-HA installations |
+| Two-node active/passive | BoltDB on synchronously replicated DRBD | Recommended production HA mode |
+| Active/active preview | PostgreSQL for HTTP routing; local state for remaining domains | Migration and acceptance testing only |
+| Proxmox LXC | Same local/PostgreSQL choice through systemd environment | Supported when the installed release contains the cluster bootstrap |
+
+PostgreSQL is not a replacement value for `-db` or `DB`. Select
+`ZORAXY_CONFIG_BACKEND=postgresql` and one configstore role instead. See the
+[active/active guide](deploy/active-active/README.md) for the exact boundary:
+certificates, ACME, access rules, redirects, streams, users and plugins are not
+yet transactional.
+
+Health probes are available at `/health/live` and `/health/ready`. Readiness
+checks local database access, loaded proxy configuration and bound listeners;
+cluster mode adds PostgreSQL configuration convergence. See the
+[Docker health reference](docker/README.md#health-endpoints).
+
 ### Start Parameters
 
 ```

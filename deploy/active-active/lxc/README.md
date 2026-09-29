@@ -14,6 +14,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/Proxmo
 The helper downloads the latest published GitHub release. Verify that the
 installed binary version contains the active/active bootstrap before enabling
 cluster mode; unreleased repository changes are not installed by that command.
+The upstream helper currently deploys the binary at `/opt/zoraxy/zoraxy`, uses
+`zoraxy.service`, and its update action replaces that binary before restarting
+the service. Re-check the upstream script before relying on those paths in
+automation.
 
 Inside the LXC, install the supplied systemd drop-in and environment template:
 
@@ -32,11 +36,12 @@ Write the complete PostgreSQL DSN as one line in
 systemctl daemon-reload
 systemctl restart zoraxy
 systemctl status zoraxy --no-pager
+systemctl cat zoraxy
 curl --fail http://127.0.0.1:8000/health/ready
 ```
 
 For a data node, readiness must report equal non-zero desired/applied revisions
-and `config_store=true`. The process performs PostgreSQL/schema preflight and
+and `checks.config_store=true`. The process performs PostgreSQL/schema preflight and
 initial revision validation before opening proxy listeners.
 
 The community update action replaces `/opt/zoraxy/zoraxy` and restarts the
