@@ -2,8 +2,9 @@
 
 This directory contains the implemented phase-2 foundation. It can run a
 separate authenticated control-plane process and PostgreSQL-backed HTTP-routing
-data nodes. It does not yet make certificates, access rules, redirects, stream
-proxies, users, plugins or ACME state transactional. Do not call the overall
+data nodes. Certificate/key revisions are now transactional and private keys
+are AES-256-GCM encrypted, but ACME renewal, access rules, redirects, stream
+proxies, users and plugins are not yet transactional. Do not call the overall
 product production-ready active/active until those remaining domains are moved.
 
 `src/mod/configstore` defines immutable revisions, compare-and-swap commits,
@@ -22,6 +23,9 @@ router to expose:
   compare-and-swap commits. `PUT` requires an exact `If-Match` revision.
 - `GET /api/cluster/nodes` for desired/applied revision and activation errors
   from every reporting data node.
+- `GET`/`PUT /api/cluster/certificates` for one certificate's public revision
+  and compare-and-swap writes. The private key is accepted only on `PUT`, is
+  encrypted before commit and is never included in a response.
 
 `configstore.AtomicActivator` enforces the activation lifecycle: build and
 validate a complete candidate off-path, atomically swap through a runtime
@@ -61,10 +65,13 @@ With the PostgreSQL backend, enable exactly one role per process:
 - `ZORAXY_CONFIGSTORE_MODE=data-plane` requires an existing revision, validates
   and activates it before readiness succeeds, then follows later revisions.
 
-Both modes require `ZORAXY_CONFIGSTORE_MIGRATION_MODE=verify|apply` and a
+Both modes require `ZORAXY_CONFIGSTORE_MIGRATION_MODE=verify|apply`, a
 PostgreSQL connection. Supply the full connection string through a Docker
 secret with `ZORAXY_CONFIGSTORE_DSN_FILE`; `ZORAXY_CONFIGSTORE_DSN` exists for
-test environments but exposes the secret through the process environment.
+test environments but exposes the secret through the process environment. They
+also require `ZORAXY_CONFIGSTORE_CERTIFICATE_KEY_FILE` containing exactly 32
+raw bytes or base64-encoded 32 bytes. The same external secret must be mounted
+on the control plane and all data nodes; it is never stored in PostgreSQL.
 `verify` is the production default: it refuses startup unless schema version 1
 is already installed. `apply` performs the idempotent version-1 migration in a
 single transaction. A data node becomes unready if its revision follower exits.
@@ -102,7 +109,9 @@ docker run --rm --network <postgres-network> \
   -e ZORAXY_CONFIGSTORE_MODE=control-plane \
   -e ZORAXY_CONFIGSTORE_MIGRATION_MODE=apply \
   -e ZORAXY_CONFIGSTORE_DSN_FILE=/run/secrets/configstore-dsn \
+  -e ZORAXY_CONFIGSTORE_CERTIFICATE_KEY_FILE=/run/secrets/certificate-key \
   -v ./secrets/configstore-dsn:/run/secrets/configstore-dsn:ro \
+  -v ./secrets/certificate-key:/run/secrets/certificate-key:ro \
   <pinned-zoraxy-image>
 ```
 
@@ -132,6 +141,7 @@ The response must include `node_role=data-plane`, equal non-zero
 | `ZORAXY_CONFIGSTORE_MIGRATION_MODE` | `verify` or `apply` | Verifies the exact schema or installs schema version 1 |
 | `ZORAXY_CONFIGSTORE_DSN_FILE` | Preferred secret-file path | Reads the complete PostgreSQL DSN without an environment secret |
 | `ZORAXY_CONFIGSTORE_DSN` | Test environments only | Supplies the DSN directly; mutually exclusive with the file variable |
+| `ZORAXY_CONFIGSTORE_CERTIFICATE_KEY_FILE` | Required with PostgreSQL | Reads the 32-byte AES-256 key used to encrypt certificate private keys |
 | `ZORAXY_CONFIGSTORE_POLL_INTERVAL` | `1s` | Positive Go duration between revision checks |
 | `ZORAXY_CONFIGSTORE_STARTUP_TIMEOUT` | `10s` | Positive Go duration for PostgreSQL/schema startup preflight |
 | `ZORAXY_NODE_ROLE` | `standalone` when unset | Label exposed in health and status responses |
@@ -156,6 +166,24 @@ A missing `If-Match` returns 428, a stale revision returns 409, invalid JSON
 returns 400, and a routing document that cannot be activated returns 422. A
 successful commit returns 201 with the new `ETag`; data-plane convergence is
 reported separately by `GET /api/cluster/nodes`.
+
+Certificate mutations use a separate revision per certificate.
+`certificate_pem` and `private_key_pem` are JSON base64 strings because they
+are byte fields. The initial write uses `If-Match: "0"`; obtain later revisions
+with `GET /api/cluster/certificates?id=<uuid>`:
+
+```json
+{
+  "certificate_id": "38a4e4d3-4ef6-4b36-ac2a-d784d18d6977",
+  "metadata": {"name": "example.com", "fallback": true},
+  "certificate_pem": "<base64 PEM>",
+  "private_key_pem": "<base64 PEM>"
+}
+```
+
+Every data node decrypts and validates the complete latest snapshot off-path,
+then swaps it atomically for new TLS handshakes. A malformed revision leaves
+the previous snapshot active. Decrypted keys stay in process memory.
 
 Two additional authenticated, read-only migration endpoints are available on
 the control plane:
@@ -190,7 +218,7 @@ docker run --rm -v "$PWD":/workspace:ro golang:1.26 sh -c \
 
 | Symptom | Cause to check first |
 | --- | --- |
-| Process exits before listeners open | Missing DSN, wrong schema version, invalid mode or no initial revision |
+| Process exits before listeners open | Missing DSN/key secret, wrong schema version, invalid mode or no initial revision |
 | Ready returns 503 with `checks.config_store=false` | Revision follower stopped or initial activation failed |
 | Desired revision is above applied revision | Candidate validation failed; inspect `last_error` in `/api/cluster/nodes` |
 | Control plane refuses startup | Management authentication is disabled (`NOAUTH=true`) |
@@ -202,15 +230,13 @@ docker run --rm -v "$PWD":/workspace:ro golang:1.26 sh -c \
 1. Inventory every write currently made to `sys.db` and `conf/`. Move one
    complete domain at a time behind repositories; never dual-write silently.
 2. Extend the versioned document beyond the implemented HTTP-routing snapshot
-   to access, authentication, redirects, streams and TLS.
+   to access, authentication, redirects and streams.
 3. Migrate legacy management write endpoints to repository transactions; until
    then they can still change local state and must not be used for cluster
    configuration.
-4. Add certificate decryption and listener-conflict validation to the existing
-   off-path candidate builder.
-5. Move ACME to one lease-elected certificate-controller. Store only encrypted
-   private keys; obtain the encryption key from an external secret provider,
-   never from PostgreSQL or the image.
+4. Add listener-conflict validation to the existing off-path candidate builder.
+5. Wire ACME renewal to the implemented lease election and encrypted
+   certificate repository; only the current controller may contact the CA.
 6. Export logs, statistics and uptime data to external sinks. They are not part
    of the configuration transaction or its RPO guarantee.
 7. Put both data nodes behind a redundant L4 frontend supporting TCP and UDP.

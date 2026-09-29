@@ -27,23 +27,32 @@ func TestLoadClusterConfigDefaultsToDisabled(t *testing.T) {
 
 func TestLoadClusterConfigReadsDSNSecret(t *testing.T) {
 	config, err := loadClusterConfig(clusterTestEnvironment(map[string]string{
-		"ZORAXY_CONFIG_BACKEND":              "postgresql",
-		"ZORAXY_CONFIGSTORE_MODE":            "data-plane",
-		"ZORAXY_CONFIGSTORE_MIGRATION_MODE":  "verify",
-		"ZORAXY_CONFIGSTORE_DSN_FILE":        "/run/secrets/configstore-dsn",
-		"ZORAXY_CONFIGSTORE_POLL_INTERVAL":   "250ms",
-		"ZORAXY_CONFIGSTORE_STARTUP_TIMEOUT": "20s",
+		"ZORAXY_CONFIG_BACKEND":                   "postgresql",
+		"ZORAXY_CONFIGSTORE_MODE":                 "data-plane",
+		"ZORAXY_CONFIGSTORE_MIGRATION_MODE":       "verify",
+		"ZORAXY_CONFIGSTORE_DSN_FILE":             "/run/secrets/configstore-dsn",
+		"ZORAXY_CONFIGSTORE_CERTIFICATE_KEY_FILE": "/run/secrets/certificate-key",
+		"ZORAXY_CONFIGSTORE_POLL_INTERVAL":        "250ms",
+		"ZORAXY_CONFIGSTORE_STARTUP_TIMEOUT":      "20s",
 	}), func(path string) ([]byte, error) {
-		if path != "/run/secrets/configstore-dsn" {
+		switch path {
+		case "/run/secrets/configstore-dsn":
+			return []byte(" postgres://cluster.example/zoraxy\n"), nil
+		case "/run/secrets/certificate-key":
+			return []byte("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="), nil
+		default:
 			t.Fatalf("secret path = %q", path)
+			return nil, nil
 		}
-		return []byte(" postgres://cluster.example/zoraxy\n"), nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if config.dsn != "postgres://cluster.example/zoraxy" || config.pollInterval != 250*time.Millisecond || config.startupTimeout != 20*time.Second {
 		t.Fatalf("unexpected config: %+v", config)
+	}
+	if string(config.certificateKey) != "0123456789abcdef0123456789abcdef" {
+		t.Fatal("certificate key was not decoded")
 	}
 }
 

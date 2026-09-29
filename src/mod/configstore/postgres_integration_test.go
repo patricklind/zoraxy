@@ -1,10 +1,13 @@
 package configstore
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -74,5 +77,92 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}
 	if len(statuses) != 1 || statuses[0].NodeID != status.NodeID || statuses[0].AppliedRevision != 1 {
 		t.Fatalf("statuses = %+v", statuses)
+	}
+
+	if _, err := db.ExecContext(ctx, `TRUNCATE certificate_revisions, controller_leases`); err != nil {
+		t.Fatal(err)
+	}
+	box, err := NewCertificateCipher([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificatePEM, privateKeyPEM := testCertificatePair(t)
+	certificateID := "38a4e4d3-4ef6-4b36-ac2a-d784d18d6977"
+	certificate, err := store.CommitCertificate(ctx, 0, CertificateRevision{
+		CertificateID:  certificateID,
+		Metadata:       json.RawMessage(`{"name":"example.test"}`),
+		CertificatePEM: certificatePEM,
+		PrivateKeyPEM:  privateKeyPEM,
+	}, box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if certificate.Revision != 1 || string(certificate.PrivateKeyPEM) != string(privateKeyPEM) {
+		t.Fatalf("certificate revision = %+v", certificate)
+	}
+	var encryptedKey []byte
+	if err := db.QueryRowContext(ctx, `SELECT encrypted_key FROM certificate_revisions WHERE certificate_id = $1 AND revision = 1`, certificateID).Scan(&encryptedKey); err != nil {
+		t.Fatal(err)
+	}
+	if string(encryptedKey) == string(privateKeyPEM) {
+		t.Fatal("private key was stored without encryption")
+	}
+	current, err := store.CurrentCertificate(ctx, certificateID, box)
+	if err != nil || current.Revision != 1 {
+		t.Fatalf("current certificate = %+v, %v", current, err)
+	}
+	certificates, err := store.ListCurrentCertificates(ctx, box)
+	if err != nil || len(certificates) != 1 || certificates[0].CertificateID != certificateID {
+		t.Fatalf("current certificates = %+v, %v", certificates, err)
+	}
+	if _, err := store.CommitCertificate(ctx, 0, certificate, box); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale certificate commit error = %v, want %v", err, ErrRevisionConflict)
+	}
+	certificateHandler, err := NewCertificateHTTPHandler(store, box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getRequest := httptest.NewRequest(http.MethodGet, CertificateAPIPath+"?id="+certificateID, nil)
+	getResponse := httptest.NewRecorder()
+	certificateHandler.ServeHTTP(getResponse, getRequest)
+	if getResponse.Code != http.StatusOK || getResponse.Header().Get("ETag") != `"1"` || bytes.Contains(getResponse.Body.Bytes(), privateKeyPEM) {
+		t.Fatalf("certificate GET status=%d etag=%q leaked-key=%v body=%s", getResponse.Code, getResponse.Header().Get("ETag"), bytes.Contains(getResponse.Body.Bytes(), privateKeyPEM), getResponse.Body.String())
+	}
+	putPayload, err := json.Marshal(certificateCommitRequest{
+		CertificateID:  certificateID,
+		Metadata:       json.RawMessage(`{"name":"example.test","fallback":true}`),
+		CertificatePEM: certificatePEM,
+		PrivateKeyPEM:  privateKeyPEM,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	putRequest := httptest.NewRequest(http.MethodPut, CertificateAPIPath, bytes.NewReader(putPayload))
+	putRequest.Header.Set("If-Match", `"1"`)
+	putResponse := httptest.NewRecorder()
+	certificateHandler.ServeHTTP(putResponse, putRequest)
+	if putResponse.Code != http.StatusCreated || putResponse.Header().Get("ETag") != `"2"` || bytes.Contains(putResponse.Body.Bytes(), privateKeyPEM) {
+		t.Fatalf("certificate PUT status=%d etag=%q leaked-key=%v body=%s", putResponse.Code, putResponse.Header().Get("ETag"), bytes.Contains(putResponse.Body.Bytes(), privateKeyPEM), putResponse.Body.String())
+	}
+	if _, err := store.CommitCertificate(ctx, 0, CertificateRevision{
+		CertificateID:  "b7a92388-4adf-48f4-b5a4-509d596808fd",
+		Metadata:       json.RawMessage(`{"name":"second.example.test","fallback":true}`),
+		CertificatePEM: certificatePEM,
+		PrivateKeyPEM:  privateKeyPEM,
+	}, box); err == nil {
+		t.Fatal("second fallback certificate was accepted")
+	}
+
+	holderA := "f2e31343-f734-42f3-b5e8-72975ce354a7"
+	holderB := "d61524c2-2265-4245-ae91-668cfdfda695"
+	lease, acquired, err := store.AcquireCertificateControllerLease(ctx, holderA, 10*time.Second)
+	if err != nil || !acquired || lease.HolderID != holderA {
+		t.Fatalf("first lease = %+v, %v, %v", lease, acquired, err)
+	}
+	if _, acquired, err := store.AcquireCertificateControllerLease(ctx, holderB, 10*time.Second); err != nil || acquired {
+		t.Fatalf("competing lease acquired = %v, %v", acquired, err)
+	}
+	if lease, acquired, err := store.AcquireCertificateControllerLease(ctx, holderA, 10*time.Second); err != nil || !acquired || lease.HolderID != holderA {
+		t.Fatalf("lease renewal = %+v, %v, %v", lease, acquired, err)
 	}
 }

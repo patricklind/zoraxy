@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"imuslab.com/zoraxy/mod/info/logger"
 	"imuslab.com/zoraxy/mod/utils"
@@ -33,10 +34,30 @@ type Manager struct {
 	CertStore    string         //Path where all the certs are stored
 	LoadedCerts  []*CertCache   //A list of loaded certs
 	Logger       *logger.Logger //System wide logger for debug mesage
-	FallbackCert string        //Name of the fallback/default certificate (no file renaming)
+	FallbackCert string         //Name of the fallback/default certificate (no file renaming)
 
 	/* External handlers */
 	hostSpecificTlsBehavior func(serverName string) (*HostSpecificTlsBehavior, error) // Function to get host specific TLS behavior, if nil, use global TLS options
+	memoryCertificates      atomic.Pointer[memoryCertificateSet]
+}
+
+// MemoryCertificate is a certificate revision supplied by an external
+// configuration store. PrivateKeyPEM is retained in process memory only.
+type MemoryCertificate struct {
+	Name           string
+	CertificatePEM []byte
+	PrivateKeyPEM  []byte
+	Fallback       bool
+}
+
+type memoryCertificate struct {
+	name        string
+	certificate tls.Certificate
+	fallback    bool
+}
+
+type memoryCertificateSet struct {
+	certificates []memoryCertificate
 }
 
 //go:embed localhost.pem localhost.key
@@ -145,6 +166,74 @@ func (m *Manager) SetHostSpecificTlsBehavior(fn func(serverName string) (*HostSp
 	m.hostSpecificTlsBehavior = fn
 }
 
+// ReplaceMemoryCertificates validates a complete certificate snapshot before
+// atomically making it visible to new TLS handshakes. An empty snapshot is
+// valid and deliberately disables fallback to file-backed certificates.
+func (m *Manager) ReplaceMemoryCertificates(candidates []MemoryCertificate) error {
+	next := &memoryCertificateSet{certificates: make([]memoryCertificate, 0, len(candidates))}
+	fallbacks := 0
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.Name) == "" {
+			return fmt.Errorf("memory certificate name is required")
+		}
+		certificate, err := tls.X509KeyPair(candidate.CertificatePEM, candidate.PrivateKeyPEM)
+		if err != nil {
+			return fmt.Errorf("load memory certificate %q: %w", candidate.Name, err)
+		}
+		if len(certificate.Certificate) == 0 {
+			return fmt.Errorf("memory certificate %q has no leaf certificate", candidate.Name)
+		}
+		certificate.Leaf, err = x509.ParseCertificate(certificate.Certificate[0])
+		if err != nil {
+			return fmt.Errorf("parse memory certificate %q: %w", candidate.Name, err)
+		}
+		if candidate.Fallback {
+			fallbacks++
+		}
+		next.certificates = append(next.certificates, memoryCertificate{
+			name:        candidate.Name,
+			certificate: certificate,
+			fallback:    candidate.Fallback,
+		})
+	}
+	if fallbacks > 1 {
+		return fmt.Errorf("memory certificate snapshot contains more than one fallback certificate")
+	}
+	m.memoryCertificates.Store(next)
+	return nil
+}
+
+func (m *Manager) getMemoryCertificate(serverName string) (*tls.Certificate, bool, error) {
+	snapshot := m.memoryCertificates.Load()
+	if snapshot == nil {
+		return nil, false, nil
+	}
+	tlsBehavior, err := m.hostSpecificTlsBehavior(serverName)
+	if err != nil {
+		tlsBehavior = GetDefaultHostSpecificTlsBehavior()
+	}
+	if preferred := tlsBehavior.PreferredCertificate[serverName]; preferred != "" {
+		for i := range snapshot.certificates {
+			if snapshot.certificates[i].name == preferred {
+				return &snapshot.certificates[i].certificate, true, nil
+			}
+		}
+	}
+	if !tlsBehavior.DisableSNI {
+		for i := range snapshot.certificates {
+			if snapshot.certificates[i].certificate.Leaf.VerifyHostname(serverName) == nil {
+				return &snapshot.certificates[i].certificate, true, nil
+			}
+		}
+	}
+	for i := range snapshot.certificates {
+		if snapshot.certificates[i].fallback {
+			return &snapshot.certificates[i].certificate, true, nil
+		}
+	}
+	return nil, true, fmt.Errorf("no in-memory certificate matches server name %q", serverName)
+}
+
 // Update domain mapping from file
 func (m *Manager) UpdateLoadedCertList() error {
 	//Get a list of certificates from file
@@ -242,6 +331,9 @@ func (m *Manager) ListCerts() ([]string, error) {
 
 // Get a certificate from disk where its certificate matches with the helloinfo
 func (m *Manager) GetCert(helloInfo *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	if certificate, enabled, err := m.getMemoryCertificate(helloInfo.ServerName); enabled {
+		return certificate, err
+	}
 	//Look for the certificate by hostname
 	pubKey, priKey, err := m.GetCertificateByHostname(helloInfo.ServerName)
 	if err != nil {

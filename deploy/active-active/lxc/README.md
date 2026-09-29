@@ -29,7 +29,12 @@ install -m 0644 20-cluster.conf /etc/systemd/system/zoraxy.service.d/20-cluster.
 ```
 
 Write the complete PostgreSQL DSN as one line in
-`/etc/zoraxy/configstore.dsn`, owned by root with mode `0600`. Edit
+`/etc/zoraxy/configstore.dsn`, owned by root with mode `0600`. Create one
+32-byte certificate encryption key, store it raw or base64-encoded in
+`/etc/zoraxy/certificate.key` with the same ownership and mode, and install the
+identical key on the control plane and every data node. Losing or rotating this
+key without re-encrypting the stored revisions makes the private keys
+unreadable. Edit
 `/etc/zoraxy/cluster.env` for either `control-plane` or `data-plane`, then run:
 
 ```sh

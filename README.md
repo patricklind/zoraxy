@@ -121,14 +121,15 @@ engine and does not accept `postgresql`.
 | --- | --- | --- |
 | Single node | Local BoltDB/LevelDB and files | Development and non-HA installations |
 | Two-node active/passive | BoltDB on synchronously replicated DRBD | Recommended production HA mode |
-| Active/active preview | PostgreSQL for HTTP routing; local state for remaining domains | Migration and acceptance testing only |
+| Active/active preview | PostgreSQL for HTTP routing and encrypted certificate revisions; local state for remaining domains | Migration and acceptance testing only |
 | Proxmox LXC | Same local/PostgreSQL choice through systemd environment | Supported when the installed release contains the cluster bootstrap |
 
 PostgreSQL is not a replacement value for `-db` or `DB`. Select
 `ZORAXY_CONFIG_BACKEND=postgresql` and one configstore role instead. See the
 [active/active guide](deploy/active-active/README.md) for the exact boundary:
-certificates, ACME, access rules, redirects, streams, users and plugins are not
-yet transactional.
+ACME automation, access rules, redirects, streams, users and plugins are not
+yet transactional. Certificate revisions are transactional, encrypted and
+atomically activated when the external certificate-key secret is configured.
 
 Health probes are available at `/health/live` and `/health/ready`. Readiness
 checks local database access, loaded proxy configuration and bound listeners;

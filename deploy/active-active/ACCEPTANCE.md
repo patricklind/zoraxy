@@ -28,6 +28,9 @@ success as full product acceptance.
 | Unauthenticated write | Rejected by management authentication | | |
 | Missing/invalid CSRF token | Write rejected | | |
 | Data-node restart | Current revision loads before listener opens | | |
+| Certificate revision | Both data nodes serve the committed certificate revision | | |
+| Invalid certificate/key pair | HTTP 422; previous certificate remains active | | |
+| Certificate key exposure | API responses and PostgreSQL rows contain no plaintext private key | | |
 | PostgreSQL primary failure | Synchronous replica promotes; nodes recover | | |
 | One data-node failure | L4 removes only failed node | | |
 | Long-lived request during update | Existing request completes on old snapshot | | |
@@ -36,6 +39,6 @@ success as full product acceptance.
 | Full Go race suite | `go test -race ./...` passes in Docker | | |
 | Static/build gates | `go vet ./...` and `go build ./...` pass in Docker | | |
 
-Full active/active acceptance remains blocked until TLS/certificates, ACME,
-access rules, authentication, redirects and stream proxies use the same
+Full active/active acceptance remains blocked until ACME, access rules,
+authentication, redirects and stream proxies use the same
 transactional revision lifecycle.
