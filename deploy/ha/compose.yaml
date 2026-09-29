@@ -10,6 +10,7 @@ services:
       MDNS: "false"
       PORT: "${ZORAXY_MANAGEMENT_PORT:-8000}"
       TZ: "${TZ:-Etc/UTC}"
+      ZORAXY_CONFIG_BACKEND: local
       ZORAXY_NODE_ROLE: active-passive
     ports:
       - "80:80/tcp"

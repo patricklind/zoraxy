@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,6 +19,12 @@ import (
 	"imuslab.com/zoraxy/mod/info/logger"
 	"imuslab.com/zoraxy/mod/tlscert"
 	"imuslab.com/zoraxy/mod/utils"
+)
+
+const (
+	maxConfigArchiveUpload       = 64 << 20
+	maxConfigArchiveExpandedSize = 256 << 20
+	maxConfigArchiveFiles        = 10000
 )
 
 /*
@@ -257,8 +264,14 @@ func ImportConfigFromZip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Max file size limit (10 MB in this example)
-	r.ParseMultipartForm(10 << 20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxConfigArchiveUpload)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, "Configuration archive exceeds 64 MiB or is malformed", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
 
 	// Get the uploaded file
 	file, handler, err := r.FormFile("file")
@@ -293,18 +306,24 @@ func ImportConfigFromZip(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to open zip file: %v", err), http.StatusInternalServerError)
 		return
 	}
+	if err := validateConfigArchive(zipReader.File); err != nil {
+		http.Error(w, "Invalid configuration archive: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	restoreDatabase := false
 
 	// Extract each file from the zip archive
 	for _, zipFile := range zipReader.File {
+		if zipFile.FileInfo().IsDir() {
+			continue
+		}
 		// Open the file in the zip archive
 		rc, err := zipFile.Open()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to open file in zip: %v", err), http.StatusInternalServerError)
 			return
 		}
-		defer rc.Close()
 
 		// Sanitize the file name to prevent path traversal (zip-slip)
 		cleanedName := filepath.Clean(filepath.FromSlash(zipFile.Name))
@@ -336,15 +355,21 @@ func ImportConfigFromZip(w http.ResponseWriter, r *http.Request) {
 		//Create the file
 		newFile, err := os.Create(cleanedName)
 		if err != nil {
+			rc.Close()
 			http.Error(w, fmt.Sprintf("Failed to create file: %v", err), http.StatusInternalServerError)
 			return
 		}
-		defer newFile.Close()
 
 		// Copy the file contents from the zip to the new file
 		_, err = io.Copy(newFile, rc)
+		closeErr := newFile.Close()
+		rcErr := rc.Close()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to extract file from zip: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if closeErr != nil || rcErr != nil {
+			http.Error(w, "Failed to finalize extracted configuration file", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -363,6 +388,44 @@ func ImportConfigFromZip(w http.ResponseWriter, r *http.Request) {
 
 	}
 
+}
+
+func validateConfigArchive(files []*zip.File) error {
+	if len(files) == 0 {
+		return errors.New("archive is empty")
+	}
+	if len(files) > maxConfigArchiveFiles {
+		return fmt.Errorf("archive contains more than %d entries", maxConfigArchiveFiles)
+	}
+
+	var expanded uint64
+	databaseFiles := 0
+	for _, file := range files {
+		name := strings.ReplaceAll(file.Name, "\\", "/")
+		cleaned := path.Clean(name)
+		if cleaned == "." || strings.HasPrefix(cleaned, "/") || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+			return fmt.Errorf("unsafe path %q", file.Name)
+		}
+		if cleaned != name && cleaned+"/" != name {
+			return fmt.Errorf("non-canonical path %q", file.Name)
+		}
+		if cleaned == "sys.db" {
+			databaseFiles++
+			if databaseFiles > 1 {
+				return errors.New("archive contains multiple sys.db entries")
+			}
+		} else if cleaned != "conf" && !strings.HasPrefix(cleaned, "conf/") {
+			return fmt.Errorf("unsupported entry %q", file.Name)
+		}
+		if file.Mode()&os.ModeSymlink != 0 || (!file.FileInfo().IsDir() && !file.Mode().IsRegular()) {
+			return fmt.Errorf("unsupported file type for %q", file.Name)
+		}
+		if file.UncompressedSize64 > maxConfigArchiveExpandedSize-expanded {
+			return fmt.Errorf("expanded archive exceeds %d MiB", maxConfigArchiveExpandedSize>>20)
+		}
+		expanded += file.UncompressedSize64
+	}
+	return nil
 }
 
 func handleLoggerConfig(w http.ResponseWriter, r *http.Request) {

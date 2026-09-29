@@ -181,7 +181,10 @@ func GetNumericRAMUsage() (int64, int64) {
 		}
 		freeMemStr := string(freeMemByteArr)
 		freeMemStr = strings.ReplaceAll(freeMemStr, "\n", "")
-		freeMemSize, err := strconv.ParseFloat(strings.ReplaceAll(string(freeMemStr), "M", ""), 10)
+		freeMemSize, err := strconv.ParseFloat(strings.ReplaceAll(freeMemStr, "M", ""), 64)
+		if err != nil {
+			return usedRam, totalRam
+		}
 
 		// Get phy memory size
 		cmd = exec.Command("bash", "-c", query_phymem_command)
@@ -194,7 +197,10 @@ func GetNumericRAMUsage() (int64, int64) {
 		phyMemStr = strings.ReplaceAll(phyMemStr, "\n", "")
 
 		// phyMemSize in MB
-		phyMemSizeFloat, err := strconv.ParseFloat(phyMemStr, 10)
+		phyMemSizeFloat, err := strconv.ParseFloat(phyMemStr, 64)
+		if err != nil {
+			return usedRam, totalRam
+		}
 		phyMemSizeFloat = math.Floor(phyMemSizeFloat)
 		total := phyMemSizeFloat
 
@@ -218,7 +224,7 @@ func GetNumericRAMUsage() (int64, int64) {
 			return usedRam, totalRam
 		}
 
-		freeMem, err := strconv.ParseFloat(strings.TrimSpace(string(freeMemStr)), 10)
+		freeMem, err := strconv.ParseFloat(strings.TrimSpace(string(freeMemStr)), 64)
 		if err != nil {
 			return usedRam, totalRam
 		}
@@ -295,7 +301,10 @@ func GetRAMUsage() (string, string, float64) {
 		}
 		freeMemStr := string(freeMemByteArr)
 		freeMemStr = strings.ReplaceAll(freeMemStr, "\n", "")
-		freeMemSize, err := strconv.ParseFloat(strings.ReplaceAll(string(freeMemStr), "M", ""), 10)
+		freeMemSize, err := strconv.ParseFloat(strings.ReplaceAll(freeMemStr, "M", ""), 64)
+		if err != nil {
+			return usedRam, totalRam, usedPercentage
+		}
 		// Get phy memory size
 		cmd = exec.Command("bash", "-c", query_phymem_command)
 		phyMemByteArr, err := cmd.CombinedOutput()
@@ -307,7 +316,10 @@ func GetRAMUsage() (string, string, float64) {
 		phyMemStr = strings.ReplaceAll(phyMemStr, "\n", "")
 
 		// phyMemSize in MB
-		phyMemSizeFloat, err := strconv.ParseFloat(phyMemStr, 10)
+		phyMemSizeFloat, err := strconv.ParseFloat(phyMemStr, 64)
+		if err != nil {
+			return usedRam, totalRam, usedPercentage
+		}
 		phyMemSizeFloat = phyMemSizeFloat / 1048576
 		phyMemSizeFloat = math.Floor(phyMemSizeFloat)
 		totalRam = strconv.FormatFloat(phyMemSizeFloat, 'f', -1, 64) + "MB"
@@ -331,11 +343,11 @@ func GetRAMUsage() (string, string, float64) {
 		if err != nil {
 			return usedRam, totalRam, usedPercentage
 		}
-		freeMemSizeFloat, err := strconv.ParseFloat(strings.TrimSpace(string(freeMemStr)), 10)
+		freeMemSizeFloat, err := strconv.ParseFloat(strings.TrimSpace(string(freeMemStr)), 64)
 		if err != nil {
 			return usedRam, totalRam, usedPercentage
 		}
-		phyMemSizeFloat, err := strconv.ParseFloat(strings.TrimSpace(string(phyMemStr)), 10)
+		phyMemSizeFloat, err := strconv.ParseFloat(strings.TrimSpace(string(phyMemStr)), 64)
 		if err != nil {
 			return usedRam, totalRam, usedPercentage
 		}

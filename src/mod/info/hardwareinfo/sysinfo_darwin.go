@@ -55,7 +55,7 @@ func GetCPUFreq() string {
 	freqStr := strings.ReplaceAll(string(freqByteArr), "GHz", "")
 	freqStr = strings.ReplaceAll(freqStr, "\n", "")
 	freqStr = strings.ReplaceAll(freqStr, " ", "")
-	freqFloat, _ := strconv.ParseFloat(freqStr, 8)
+	freqFloat, _ := strconv.ParseFloat(freqStr, 64)
 	freqFloat = freqFloat * 1000
 	freqStrMHz := strconv.FormatFloat(freqFloat, 'f', -1, 64)
 

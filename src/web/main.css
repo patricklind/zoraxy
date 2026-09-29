@@ -324,6 +324,13 @@ body.darkTheme .menubar{
     color: rgba(0, 0, 0, 0.72);
 }
 
+.menugroup-header:focus-visible,
+.ui.button:focus-visible,
+a.item:focus-visible {
+    outline: 3px solid #2185d0;
+    outline-offset: 2px;
+}
+
 .menugroup-icon {
 	width: 20px;
 	height: auto;

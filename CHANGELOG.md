@@ -13,6 +13,12 @@
   uptime connection-leak testing. Statistics writes now complete before return.
 + Synchronize the root, Docker, HA, active/active and Proxmox LXC documentation
   with the implemented backend selection, health response and verification flow.
++ Update `pgx` and `gorilla/csrf` to patched versions identified by
+  `govulncheck`, and validate configuration ZIP structure, paths, entry count
+  and expanded size before replacing live configuration.
++ Fix invalid floating-point parsing on FreeBSD and macOS system metrics.
++ Restore browser zoom, keyboard-operable navigation groups, visible focus and
+  accessible names for the main management toolbar and login fields.
 
 # v3.3.4 22 Aug 2026
 

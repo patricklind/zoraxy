@@ -135,6 +135,12 @@ checks local database access, loaded proxy configuration and bound listeners;
 cluster mode adds PostgreSQL configuration convergence. See the
 [Docker health reference](docker/README.md#health-endpoints).
 
+Configuration imports accept ZIP uploads up to 64 MiB and reject traversal,
+non-configuration entries, special files, excessive entry counts and archives
+that expand beyond 256 MiB before the live configuration is touched. Always
+retain an independent backup; import still restarts the process when `sys.db`
+is restored.
+
 ### Start Parameters
 
 ```
