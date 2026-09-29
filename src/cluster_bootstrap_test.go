@@ -25,6 +25,20 @@ func TestLoadClusterConfigDefaultsToDisabled(t *testing.T) {
 	}
 }
 
+func TestPostgresConfigBackendSelectedSupportsExplicitAndPreviewConfiguration(t *testing.T) {
+	for _, values := range []map[string]string{
+		{"ZORAXY_CONFIG_BACKEND": "postgresql"},
+		{"ZORAXY_CONFIGSTORE_MODE": "data-plane"},
+	} {
+		if !postgresConfigBackendSelected(clusterTestEnvironment(values)) {
+			t.Fatalf("PostgreSQL environment was not detected: %+v", values)
+		}
+	}
+	if postgresConfigBackendSelected(clusterTestEnvironment(map[string]string{"ZORAXY_CONFIG_BACKEND": "local"})) {
+		t.Fatal("local backend was detected as PostgreSQL")
+	}
+}
+
 func TestLoadClusterConfigReadsDSNSecret(t *testing.T) {
 	config, err := loadClusterConfig(clusterTestEnvironment(map[string]string{
 		"ZORAXY_CONFIG_BACKEND":                   "postgresql",

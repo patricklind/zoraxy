@@ -47,7 +47,7 @@ type ExpiredCerts struct {
 
 // Create an auto renew agent, require config filepath and auto scan & renew interval (seconds)
 // Set renew check interval to 0 for auto (1 day)
-func NewAutoRenewer(config string, certFolder string, renewCheckInterval int64, earlyRenewDays int, AcmeHandler *ACMEHandler, logger *logger.Logger) (*AutoRenewer, error) {
+func NewAutoRenewer(config string, certFolder string, renewCheckInterval int64, earlyRenewDays int, AcmeHandler *ACMEHandler, logger *logger.Logger, startEnabled bool) (*AutoRenewer, error) {
 	if renewCheckInterval == 0 {
 		renewCheckInterval = 86400 //1 day
 	}
@@ -95,7 +95,7 @@ func NewAutoRenewer(config string, certFolder string, renewCheckInterval int64, 
 
 	thisRenewer.Logf("ACME early renew set to "+fmt.Sprint(earlyRenewDays)+" days and check interval set to "+fmt.Sprint(renewCheckInterval)+" seconds", nil)
 
-	if thisRenewer.RenewerConfig.Enabled {
+	if thisRenewer.RenewerConfig.Enabled && startEnabled {
 		//Start the renew ticker
 		thisRenewer.StartAutoRenewTicker()
 

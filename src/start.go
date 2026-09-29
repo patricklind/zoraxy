@@ -355,6 +355,7 @@ func startupSequence() {
 		*acmeCertAutoRenewDays,
 		acmeHandler,
 		SystemWideLogger,
+		!postgresConfigBackendSelected(os.Getenv),
 	)
 	if err != nil {
 		log.Fatal(err)

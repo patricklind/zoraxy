@@ -185,6 +185,12 @@ Every data node decrypts and validates the complete latest snapshot off-path,
 then swaps it atomically for new TLS handshakes. A malformed revision leaves
 the previous snapshot active. Decrypted keys stay in process memory.
 
+ACME issuance, renewal settings and the renewal ticker are fail-closed when the
+PostgreSQL backend is selected. The legacy endpoints return HTTP 409 instead of
+creating node-local certificates or allowing duplicate CA requests. Upload
+reviewed certificate revisions through the cluster certificate API until the
+lease-elected controller is implemented.
+
 Two additional authenticated, read-only migration endpoints are available on
 the control plane:
 
@@ -222,6 +228,7 @@ docker run --rm -v "$PWD":/workspace:ro golang:1.26 sh -c \
 | Ready returns 503 with `checks.config_store=false` | Revision follower stopped or initial activation failed |
 | Desired revision is above applied revision | Candidate validation failed; inspect `last_error` in `/api/cluster/nodes` |
 | Control plane refuses startup | Management authentication is disabled (`NOAUTH=true`) |
+| ACME endpoint returns 409 | Expected with PostgreSQL until the lease-elected controller is enabled |
 | `DB=postgresql` startup error | PostgreSQL must be selected with `ZORAXY_CONFIG_BACKEND`, not the local DB selector |
 | LXC works locally but ignores cluster variables | Missing systemd drop-in, unreadable DSN file or installed release predates this bootstrap |
 

@@ -39,6 +39,12 @@ type clusterConfig struct {
 type environmentLookup func(string) string
 type secretReader func(string) ([]byte, error)
 
+func postgresConfigBackendSelected(getenv environmentLookup) bool {
+	backend := strings.ToLower(strings.TrimSpace(getenv("ZORAXY_CONFIG_BACKEND")))
+	mode := strings.ToLower(strings.TrimSpace(getenv("ZORAXY_CONFIGSTORE_MODE")))
+	return backend == configBackendPostgreSQL || (backend == "" && mode != "" && mode != clusterModeDisabled)
+}
+
 func loadClusterConfig(getenv environmentLookup, readFile secretReader) (clusterConfig, error) {
 	config := clusterConfig{
 		backend:        strings.ToLower(strings.TrimSpace(getenv("ZORAXY_CONFIG_BACKEND"))),

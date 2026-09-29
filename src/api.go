@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/pprof"
+	"os"
 
 	"imuslab.com/zoraxy/mod/acme/acmedns"
 	"imuslab.com/zoraxy/mod/acme/acmewizard"
@@ -238,6 +239,23 @@ func RegisterMDNSAPIs(authRouter *auth.RouterDef) {
 
 // Register the APIs for ACME and Auto Renewer management functions
 func RegisterACMEAndAutoRenewerAPIs(authRouter *auth.RouterDef) {
+	if postgresConfigBackendSelected(os.Getenv) {
+		reject := func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "ACME is disabled with the PostgreSQL backend until the lease-elected certificate controller is enabled", http.StatusConflict)
+		}
+		for _, endpoint := range []string{
+			"/api/acme/listExpiredDomains", "/api/acme/obtainCert",
+			"/api/acme/autoRenew/enable", "/api/acme/autoRenew/ca",
+			"/api/acme/autoRenew/email", "/api/acme/autoRenew/setDomains",
+			"/api/acme/autoRenew/setEAB", "/api/acme/autoRenew/setDNS",
+			"/api/acme/autoRenew/listDomains", "/api/acme/autoRenew/renewPolicy",
+			"/api/acme/autoRenew/renewNow", "/api/acme/wizard",
+		} {
+			_ = authRouter.HandleFunc(endpoint, reject)
+		}
+		authRouter.HandleFunc("/api/acme/dns/providers", acmedns.HandleServeProvidersJson)
+		return
+	}
 	/* ACME Core */
 	authRouter.HandleFunc("/api/acme/listExpiredDomains", acmeHandler.HandleGetExpiredDomains)
 	authRouter.HandleFunc("/api/acme/obtainCert", AcmeCheckAndHandleRenewCertificate)
