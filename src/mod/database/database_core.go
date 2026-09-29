@@ -5,6 +5,7 @@ package database
 
 import (
 	"errors"
+	"io"
 
 	"imuslab.com/zoraxy/mod/database/dbbolt"
 	"imuslab.com/zoraxy/mod/database/dbinc"
@@ -63,6 +64,10 @@ func (d *Database) delete(tableName string, key string) error {
 
 func (d *Database) listTable(tableName string) ([][][]byte, error) {
 	return d.Backend.ListTable(tableName)
+}
+
+func (d *Database) snapshot(writer io.Writer) error {
+	return d.Backend.Snapshot(writer)
 }
 
 func (d *Database) close() {

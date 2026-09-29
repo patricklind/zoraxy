@@ -1,0 +1,19 @@
+[Unit]
+Description=Zoraxy HA container managed by Pacemaker
+Requires=docker.service
+After=docker.service
+ConditionPathIsMountPoint=/srv/zoraxy
+
+[Service]
+Type=notify
+NotifyAccess=all
+EnvironmentFile=/etc/zoraxy-ha/zoraxy.env
+WorkingDirectory=/etc/zoraxy-ha
+ExecStartPre=/usr/local/libexec/zoraxy-ha-preflight
+ExecStart=/usr/local/libexec/zoraxy-ha-run
+ExecStop=/usr/bin/docker compose --env-file /etc/zoraxy-ha/zoraxy.env -f /etc/zoraxy-ha/compose.yaml down --timeout 30
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

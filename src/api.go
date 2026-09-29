@@ -449,6 +449,7 @@ func initAPIs(targetMux *http.ServeMux) {
 	targetMux.HandleFunc("/api/info/x", HandleZoraxyInfo)
 	authRouter.HandleFunc("/api/info/geoip", HandleGeoIpLookup)
 	authRouter.HandleFunc("/api/info/ipcheck", HandleIpAccessCheck)
+	authRouter.HandleFunc("/api/cluster/status", handleClusterStatus)
 	authRouter.HandleFunc("/api/geodb/updateStatus", HandleGeoDBUpdateStatus)
 	authRouter.HandleFunc("/api/geodb/updateNow", HandleGeoDBUpdateNow)
 	authRouter.HandleFunc("/api/geodb/autoUpdate", HandleGeoDBAutoUpdate)

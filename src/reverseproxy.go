@@ -283,8 +283,11 @@ func ReverseProxyInit() {
 	//reverse proxy server in front of this service
 	if autoStartReverseProxy {
 		time.Sleep(300 * time.Millisecond)
-		dynamicProxyRouter.StartProxyService()
-		SystemWideLogger.Println("Dynamic Reverse Proxy service started")
+		if err := dynamicProxyRouter.StartProxyService(); err != nil {
+			SystemWideLogger.PrintAndLog("proxy-config", "Dynamic Reverse Proxy service failed to start", err)
+		} else {
+			SystemWideLogger.Println("Dynamic Reverse Proxy service started")
+		}
 	}
 
 	//Add all proxy services to uptime monitor

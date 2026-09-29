@@ -140,6 +140,7 @@ func main() {
 
 	// Create a entry mux to accept all management interface requests
 	entryMux := http.NewServeMux()
+	registerHealthEndpoints(entryMux)                         //Public health endpoints for local HA orchestration
 	entryMux.Handle("/plugin/", pluginAPIMux)            //For plugins API access
 	entryMux.Handle("/", csrfMiddleware(webminPanelMux)) //For webmin UI access, require csrf token
 

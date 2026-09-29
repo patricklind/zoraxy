@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+: "${ZORAXY_VIP:?Set ZORAXY_VIP}"
+: "${ZORAXY_VIP_CIDR:?Set ZORAXY_VIP_CIDR, for example 24}"
+: "${ZORAXY_VIP_NIC:?Set ZORAXY_VIP_NIC}"
+: "${ZORAXY_FENCE_NODE_A:?Set the STONITH resource for node A}"
+: "${ZORAXY_FENCE_NODE_B:?Set the STONITH resource for node B}"
+
+if ! pcs quorum status | grep -Eq 'Quorate:[[:space:]]+Yes'; then
+  echo "Refusing to configure resources without quorum" >&2
+  exit 1
+fi
+if ! pcs quorum status | grep -Eqi 'qdevice|qnetd'; then
+  echo "Refusing to configure two-node failover without a qdevice" >&2
+  exit 1
+fi
+pcs stonith config "$ZORAXY_FENCE_NODE_A" >/dev/null
+pcs stonith config "$ZORAXY_FENCE_NODE_B" >/dev/null
+
+pcs property set stonith-enabled=true startup-fencing=true no-quorum-policy=stop
+
+pcs resource create drbd-zoraxy ocf:linbit:drbd drbd_resource=zoraxy \
+  op monitor interval=15s role=Promoted \
+  op monitor interval=30s role=Unpromoted
+pcs resource promotable drbd-zoraxy promoted-max=1 promoted-node-max=1 clone-max=2 clone-node-max=1 notify=true
+
+pcs resource create zoraxy-fs ocf:heartbeat:Filesystem \
+  device=/dev/drbd0 directory=/srv/zoraxy fstype=ext4 \
+  op monitor interval=15s timeout=40s
+pcs resource create zoraxy-service systemd:zoraxy-ha \
+  op start timeout=120s op stop timeout=90s op monitor interval=15s timeout=20s
+pcs resource create zoraxy-vip ocf:heartbeat:IPaddr2 \
+  ip="$ZORAXY_VIP" cidr_netmask="$ZORAXY_VIP_CIDR" nic="$ZORAXY_VIP_NIC" \
+  op monitor interval=10s timeout=20s
+
+pcs resource group add zoraxy-stack zoraxy-fs zoraxy-service zoraxy-vip
+pcs constraint colocation add zoraxy-stack with promoted drbd-zoraxy-clone INFINITY
+pcs constraint order promote drbd-zoraxy-clone then start zoraxy-stack
+
+pcs resource defaults update resource-stickiness=200 migration-threshold=1
+pcs resource cleanup
+pcs status --full

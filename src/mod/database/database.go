@@ -9,6 +9,7 @@ package database
 */
 
 import (
+	"io"
 	"log"
 	"runtime"
 
@@ -136,6 +137,11 @@ func (d *Database) Delete(tableName string, key string) error {
 
 func (d *Database) ListTable(tableName string) ([][][]byte, error) {
 	return d.listTable(tableName)
+}
+
+// Snapshot writes a transactionally consistent database image to writer.
+func (d *Database) Snapshot(writer io.Writer) error {
+	return d.snapshot(writer)
 }
 
 /*

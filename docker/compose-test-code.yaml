@@ -1,0 +1,21 @@
+services:
+  unit-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    command: ["go", "test", "./..."]
+
+  vet:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    command: ["go", "vet", "./..."]
+
+  format-check:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    command:
+      - sh
+      - -ec
+      - test -z "$$(gofmt -l .)"

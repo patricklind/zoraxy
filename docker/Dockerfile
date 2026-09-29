@@ -1,5 +1,5 @@
 ## Build Zoraxy
-FROM docker.io/golang:alpine AS build-zoraxy
+FROM docker.io/golang:1.26-alpine AS build-zoraxy
 RUN mkdir -p /opt/zoraxy/source/ &&\
     mkdir -p /usr/local/bin/
 
@@ -34,7 +34,7 @@ RUN curl -Lo ZeroTierOne.tar.gz https://codeload.github.com/zerotier/ZeroTierOne
 
 
 ## Main
-FROM docker.io/alpine:latest
+FROM docker.io/alpine:3.22
 RUN apk add --update --no-cache tzdata python3 sudo netcat-openbsd libressl-dev openssh ca-certificates libc6-compat libstdc++ &&\
     rm -rf /sbin/apk /var/cache/apk/* /tmp/* # Simple cleanup
 
@@ -74,5 +74,4 @@ LABEL com.imuslab.zoraxy.container-identifier="Zoraxy"
 
 ENTRYPOINT [ "python3", "-u", "/opt/zoraxy/entrypoint.py" ]
 
-HEALTHCHECK --start-period=5s --interval=15s --timeout=5s --retries=3 CMD nc -vz 127.0.0.1 $PORT || exit 1
-
+HEALTHCHECK --start-period=10s --interval=15s --timeout=5s --retries=3 CMD ["sh", "-c", "wget -q --spider http://127.0.0.1:${PORT}/health/ready"]

@@ -237,6 +237,16 @@ func (router *Router) StartProxyService() error {
 			return err
 		}
 
+		ln, err := net.Listen("tcp", router.server.Addr)
+		if err != nil {
+			router.server = nil
+			if router.rateLimterStop != nil {
+				router.rateLimterStop <- true
+			}
+			router.Option.Logger.PrintAndLog("dprouter", "Could not bind proxy listener", err)
+			return err
+		}
+		router.primaryListenerReady.Store(true)
 		router.Running = true
 		if router.Option.Port != 80 && router.Option.ListenOnPort80 && !netutils.CheckIfPortOccupied(80) {
 			//Add a 80 to 443 redirector
@@ -332,13 +342,8 @@ func (router *Router) StartProxyService() error {
 		//Start the TLS server
 		router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (TLS mode)", nil)
 		// Fixed #1206: passing the router.server into go routine to prevent nil pointer exception
-		go func(srv *http.Server) {
-			ln, err := net.Listen("tcp", srv.Addr)
-			if err != nil {
-				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server (listen failed)", err)
-				return
-			}
-
+		go func(srv *http.Server, ln net.Listener) {
+			defer router.primaryListenerReady.Store(false)
 			// Conditionally use PROXY protocol based on the experimental flag
 			var finalListener net.Listener
 			if router.Option.UseProxyProtocol {
@@ -354,7 +359,7 @@ func (router *Router) StartProxyService() error {
 			router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
 		}
 
-		}(router.server)
+		}(router.server, ln)
 
 		// Start HTTP/3 (QUIC) listener alongside the TLS server
 		h3Srv, err := router.startH3Listener(config)
@@ -376,12 +381,25 @@ func (router *Router) StartProxyService() error {
 			WriteTimeout:      time.Duration(router.Option.WriteTimeout) * time.Second,
 			IdleTimeout:       time.Duration(router.Option.IdleTimeout) * time.Second,
 		}
+		ln, err := net.Listen("tcp", router.server.Addr)
+		if err != nil {
+			router.server = nil
+			if router.rateLimterStop != nil {
+				router.rateLimterStop <- true
+			}
+			router.Option.Logger.PrintAndLog("dprouter", "Could not bind proxy listener", err)
+			return err
+		}
+		router.primaryListenerReady.Store(true)
 		router.Running = true
 		router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (Plain HTTP mode)", nil)
 
-		go func(srv *http.Server) {
-			srv.ListenAndServe()
-		}(router.server) // Fixed #1206
+		go func(srv *http.Server, ln net.Listener) {
+			defer router.primaryListenerReady.Store(false)
+			if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
+			}
+		}(router.server, ln) // Fixed #1206
 	}
 
 	// Start secondary listeners for alternative listening ports
@@ -731,6 +749,7 @@ func (router *Router) StopProxyService() error {
 	router.rateLimterStop = nil
 	router.h3Server = nil
 	router.h3Conn = nil
+	router.primaryListenerReady.Store(false)
 
 	router.secondaryServerMutex.Lock()
 	router.secondaryServers = make(map[string]*http.Server)
@@ -742,6 +761,12 @@ func (router *Router) StopProxyService() error {
 	router.Option.Logger.PrintAndLog("dprouter", "Proxy service stopped successfully", nil)
 
 	return nil
+}
+
+// IsReady reports whether the primary listener is bound and a root routing
+// configuration is installed. It intentionally does not probe upstreams.
+func (router *Router) IsReady() bool {
+	return router != nil && router.Root != nil && router.primaryListenerReady.Load()
 }
 
 // Restart safely restarts the proxy server

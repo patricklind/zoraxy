@@ -1,0 +1,34 @@
+resource zoraxy {
+  protocol C;
+
+  net {
+    cram-hmac-alg sha256;
+    shared-secret "REPLACE_WITH_RANDOM_SECRET";
+    fencing resource-and-stonith;
+  }
+
+  disk {
+    on-io-error detach;
+    disk-flushes yes;
+    disk-barrier yes;
+  }
+
+  handlers {
+    fence-peer "/usr/lib/drbd/crm-fence-peer.9.sh";
+    after-resync-target "/usr/lib/drbd/crm-unfence-peer.9.sh";
+  }
+
+  on zoraxy-a {
+    device /dev/drbd0;
+    disk /dev/REPLACE_ZORAXY_DATA_DEVICE;
+    address REPLACE_NODE_A_REPLICATION_IP:7789;
+    meta-disk internal;
+  }
+
+  on zoraxy-b {
+    device /dev/drbd0;
+    disk /dev/REPLACE_ZORAXY_DATA_DEVICE;
+    address REPLACE_NODE_B_REPLICATION_IP:7789;
+    meta-disk internal;
+  }
+}

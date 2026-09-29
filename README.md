@@ -64,7 +64,7 @@ Check out our new (experimental) nginx to Zoraxy config converter!
 
 ## Build from Source
 
-Requires Go 1.23 or higher
+Requires Go 1.26 or higher
 
 ```bash
 git clone https://github.com/tobychui/zoraxy
@@ -104,6 +104,12 @@ The installation method is same as Linux. For other ARM SBCs, please refer to yo
 #### Docker
 
 See the [/docker](https://github.com/tobychui/zoraxy/tree/main/docker) folder for more details.
+
+For a two-node active/passive deployment with synchronous state replication,
+quorum, fencing and a floating service IP, see [`deploy/ha`](deploy/ha/README.md).
+The separate [`deploy/active-active`](deploy/active-active/README.md) directory
+contains the transactional control-plane migration boundary; it is not a
+drop-in Compose mode for the legacy file-backed runtime.
 
 ### Start Parameters
 
@@ -261,4 +267,3 @@ If you like the project and want to support us, please consider a donation. You 
 ## License
 
 This project is open-sourced under AGPL. I open-sourced this project so everyone can check for security issues and benefit all users. **This software is intended to be free of charge. If you have acquired this software from a third-party seller, the authors of this repository bears no responsibility for any technical difficulties assistance or support.**
-

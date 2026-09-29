@@ -1,5 +1,7 @@
 package dbinc
 
+import "io"
+
 /*
 	dbinc is the interface for all database backend
 */
@@ -22,6 +24,7 @@ type Backend interface {
 	KeyExists(tableName string, key string) bool
 	Delete(tableName string, key string) error
 	ListTable(tableName string) ([][][]byte, error)
+	Snapshot(writer io.Writer) error
 	Close()
 }
 

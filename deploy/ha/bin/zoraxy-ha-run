@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+compose() {
+  docker compose \
+    --env-file /etc/zoraxy-ha/zoraxy.env \
+    -f /etc/zoraxy-ha/compose.yaml "$@"
+}
+
+compose up --detach --no-build --wait
+systemd-notify --ready --status="Zoraxy container is ready"
+
+exit_code="$(docker wait zoraxy-ha)"
+systemd-notify --status="Zoraxy container stopped with exit code ${exit_code}"
+exit "${exit_code}"

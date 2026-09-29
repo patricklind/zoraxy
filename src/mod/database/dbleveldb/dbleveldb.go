@@ -2,6 +2,8 @@ package dbleveldb
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"path/filepath"
 	"strings"
@@ -144,6 +146,10 @@ func (d *DB) ListTable(tableName string) ([][][]byte, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (d *DB) Snapshot(_ io.Writer) error {
+	return errors.New("single-file snapshots are not supported by the LevelDB backend; use BoltDB for HA backups")
 }
 
 func (d *DB) Close() {

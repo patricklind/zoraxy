@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -159,6 +160,13 @@ func (d *Database) ListTable(tableName string) ([][][]byte, error) {
 		return nil
 	})
 	return results, err
+}
+
+func (d *Database) Snapshot(writer io.Writer) error {
+	return d.Db.(*bolt.DB).View(func(tx *bolt.Tx) error {
+		_, err := tx.WriteTo(writer)
+		return err
+	})
 }
 
 func (d *Database) Close() {

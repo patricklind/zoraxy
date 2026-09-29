@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/quic-go/quic-go/http3"
 
@@ -109,6 +110,7 @@ type Router struct {
 	loadBalancer *loadbalance.RouteManager //Load balancer routing manager
 	routingRules []*RoutingRule            //Special routing rules, handle high priority routing like ACME request handling
 	restarting   bool                      //If the router is restarting
+	primaryListenerReady atomic.Bool       //True only after the primary TCP listener is bound
 
 	h3Server *http3.Server   //HTTP/3 (QUIC) server, nil when disabled
 	h3Conn   net.PacketConn  //UDP connection serving the HTTP/3 listener; closed on shutdown

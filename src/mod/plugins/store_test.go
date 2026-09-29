@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"io"
 	"testing"
 
 	"imuslab.com/zoraxy/mod/database"
@@ -89,5 +90,7 @@ func (f *fakeBackend) Delete(tableName string, key string) error {
 func (f *fakeBackend) ListTable(tableName string) ([][][]byte, error) {
 	return [][][]byte{}, nil
 }
+
+func (f *fakeBackend) Snapshot(io.Writer) error { return nil }
 
 func (f *fakeBackend) Close() {}

@@ -233,16 +233,9 @@ func ExportConfigAsZip(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Open the file on disk
-		file, err := os.Open(*path_database)
-		if err != nil {
-			SystemWideLogger.PrintAndLog("Backup", "Unable to open sysdb", err)
-			return
-		}
-		defer file.Close()
-
-		// Copy the file contents to the zip file
-		_, err = io.Copy(zipFile, file)
+		// Stream a transactionally consistent backend snapshot. Copying an open
+		// BoltDB file directly can capture pages from different transactions.
+		err = sysdb.Snapshot(zipFile)
 		if err != nil {
 			SystemWideLogger.Println(err)
 			return

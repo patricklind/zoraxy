@@ -1,0 +1,44 @@
+# Active/active control-plane migration
+
+This directory is the implementation boundary for phase 2. It does not turn
+the legacy file-backed process into an active/active system merely by starting
+another container.
+
+`src/mod/configstore` defines immutable revisions, compare-and-swap commits,
+PostgreSQL transactions, change watching and failure-safe activation. The SQL
+migration defines the authoritative configuration, per-node convergence state,
+encrypted certificate revisions and a single certificate-controller lease.
+
+## Required implementation order
+
+1. Inventory every write currently made to `sys.db` and `conf/`. Move one
+   complete domain at a time behind repositories; never dual-write silently.
+2. Serialize all routing, access, authentication and TLS inputs into one
+   versioned configuration document and validate it before `Commit`.
+3. Require `If-Match: <revision>` on control-plane mutations. Map
+   `configstore.ErrRevisionConflict` to HTTP 409 and return the current
+   revision in the response.
+4. Build a complete candidate router off-path on each data node. Call the
+   `Activator` only after parsing, certificate decryption and listener conflict
+   checks pass; swap the runtime atomically.
+5. Update `node_status` after activation. A rejected revision records
+   `last_error` and keeps the last applied router serving.
+6. Move ACME to one lease-elected certificate-controller. Store only encrypted
+   private keys; obtain the encryption key from an external secret provider,
+   never from PostgreSQL or the image.
+7. Export logs, statistics and uptime data to external sinks. They are not part
+   of the configuration transaction or its RPO guarantee.
+8. Put both data nodes behind a redundant L4 frontend supporting TCP and UDP.
+   Test QUIC and every configured stream-proxy port explicitly.
+
+## Migration safety
+
+Start with PostgreSQL in shadow/read-only comparison mode. Compare its rendered
+configuration hash with the legacy file configuration on every change. Cut
+management writes to the control plane only after the hashes remain identical
+through a full test cycle. Keep a reversible export to the legacy ZIP format
+until the active/active acceptance suite has passed.
+
+Do not enable active/active production traffic until PostgreSQL synchronous
+replication, DCS quorum, secrets, certificate-controller election and L4
+failover have each been tested independently.

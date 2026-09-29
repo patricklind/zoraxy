@@ -6,6 +6,7 @@ package database
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -173,6 +174,10 @@ func (d *Database) listTable(tableName string) ([][][]byte, error) {
 
 func (d *Database) close() {
 	//Nothing to close as it is file system
+}
+
+func (d *Database) snapshot(_ io.Writer) error {
+	return errors.New("database snapshots are not supported by the filesystem backend")
 }
 
 func isDirectory(path string) bool {
