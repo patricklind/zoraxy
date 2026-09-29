@@ -1,3 +1,13 @@
+# Unreleased
+
++ Add active/passive HA deployment assets with DRBD, Pacemaker, quorum,
+  fencing, health checks and application-consistent BoltDB export.
++ Add an experimental PostgreSQL configuration store with immutable revisions,
+  `If-Match` concurrency control and per-node convergence status.
++ Add explicit `control-plane` and `data-plane` bootstrap modes. Data-plane
+  startup validates and atomically activates an existing routing revision
+  before proxy listeners open and does not load legacy HTTP routing files.
+
 # v3.3.4 22 Aug 2026
 
 + Fix: statistic bounded maps by [ElmoViggiani](https://github.com/ElmoViggiani) in [#1191](https://github.com/tobychui/zoraxy/issues/1191)

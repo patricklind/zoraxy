@@ -105,6 +105,13 @@ This directory contains all the modular components that make up the Zoraxy rever
 - Provides unified database interface
 - Includes database utilities and migration tools
 
+### configstore
+**Purpose**: Transactional active/active configuration control plane
+- Stores immutable, hashed revisions in PostgreSQL
+- Enforces compare-and-swap writes through `If-Match`
+- Tracks desired/applied revisions and activation errors per data node
+- Validates and atomically activates complete runtime candidates
+
 ### geodb
 **Purpose**: Geographic database for IP geolocation
 - Maps IP addresses to geographic locations

@@ -102,9 +102,44 @@ Variables are the same as those in [Start Parameters](https://github.com/tobychu
 | `VERSION` | `false` (Boolean) | Show version of this server. |
 | `WEBROOT` | `./www` (String) | Static web server root folder. Only allow change in start parameters. |
 | `ZEROTIER` | `false` (Boolean) | Enable ZeroTier functionality for GAN. |
+| `ZORAXY_NODE_ROLE` | `standalone` (String) | Role reported by health/status endpoints. Use `data-plane` for a PostgreSQL-backed traffic node. |
+| `ZORAXY_CONFIGSTORE_MODE` | `disabled` (String) | `disabled`, `control-plane`, or `data-plane`. See `deploy/active-active`. |
+| `ZORAXY_CONFIGSTORE_MIGRATION_MODE` | none | Required when configstore is enabled: `verify` or `apply`. |
+| `ZORAXY_CONFIGSTORE_DSN_FILE` | none | Path to a Docker secret containing the complete PostgreSQL DSN. Preferred for deployment. |
+| `ZORAXY_CONFIGSTORE_DSN` | none | Direct PostgreSQL DSN for disposable test environments only. |
+| `ZORAXY_CONFIGSTORE_POLL_INTERVAL` | `1s` | Positive Go duration controlling revision polling. |
+| `ZORAXY_CONFIGSTORE_STARTUP_TIMEOUT` | `10s` | Positive Go duration for database/schema preflight and initial activation. |
 
 > [!IMPORTANT]
 > Contrary to the Zoraxy README, Docker usage of the port flag should NOT include the colon. Ex: `-e PORT="8000"` for Docker run and `PORT: "8000"` for Docker compose.
+
+### High availability modes
+
+Use [`deploy/ha`](../deploy/ha/README.md) for the production-oriented
+active/passive design. Use [`deploy/active-active`](../deploy/active-active/README.md)
+only for the staged PostgreSQL migration. A data-plane container performs its
+database and schema preflight before opening proxy listeners, ignores legacy
+HTTP routing files, and requires an existing valid revision. Never mount the
+same writable `/opt/zoraxy/config/` volume into two containers.
+
+For cluster deployments, mount a DSN secret instead of placing credentials in
+Compose environment values:
+
+```yaml
+services:
+  zoraxy:
+    environment:
+      ZORAXY_NODE_ROLE: data-plane
+      ZORAXY_CONFIGSTORE_MODE: data-plane
+      ZORAXY_CONFIGSTORE_MIGRATION_MODE: verify
+      ZORAXY_CONFIGSTORE_DSN_FILE: /run/secrets/configstore-dsn
+    secrets:
+      - configstore-dsn
+
+secrets:
+  configstore-dsn:
+    file: ./secrets/configstore-dsn
+```
 
 ### ZeroTier
 

@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	dynamicProxyRouter      *dynamicproxy.Router
-	dynamicProxyRouterReady = make(chan bool, 1)
+	dynamicProxyRouter           *dynamicproxy.Router
+	dynamicProxyRouterReady      = make(chan bool, 1)
 	dynamicProxyRouterConfigured = make(chan struct{}, 1)
 )
 

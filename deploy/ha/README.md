@@ -6,6 +6,11 @@ Pacemaker/Corosync controls promotion, mount, container startup and the virtual
 IP. A third `corosync-qnetd` vote and working STONITH are mandatory for
 automatic failover.
 
+This is the recommended HA mode while configuration domains other than HTTP
+routing still use local files/BoltDB. The PostgreSQL-backed phase-2 work is
+documented separately in [`../active-active`](../active-active/README.md); do
+not combine DRBD ownership with `ZORAXY_CONFIGSTORE_MODE=data-plane`.
+
 ## Required topology
 
 <!-- markdownlint-disable MD013 -->

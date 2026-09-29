@@ -108,8 +108,9 @@ See the [/docker](https://github.com/tobychui/zoraxy/tree/main/docker) folder fo
 For a two-node active/passive deployment with synchronous state replication,
 quorum, fencing and a floating service IP, see [`deploy/ha`](deploy/ha/README.md).
 The separate [`deploy/active-active`](deploy/active-active/README.md) directory
-contains the transactional control-plane migration boundary; it is not a
-drop-in Compose mode for the legacy file-backed runtime.
+documents the experimental PostgreSQL control plane and data-node bootstrap.
+It supports atomic HTTP-routing revisions, but it is not yet a production
+replacement for every legacy file-backed configuration domain.
 
 ### Start Parameters
 
