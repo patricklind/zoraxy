@@ -355,9 +355,9 @@ func (router *Router) StartProxyService() error {
 				finalListener = ln
 			}
 
-		if err := srv.ServeTLS(finalListener, "", ""); err != nil && err != http.ErrServerClosed {
-			router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
-		}
+			if err := srv.ServeTLS(finalListener, "", ""); err != nil && err != http.ErrServerClosed {
+				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
+			}
 
 		}(router.server, ln)
 

@@ -3,7 +3,7 @@ package dbinc
 import "io"
 
 /*
-	dbinc is the interface for all database backend
+dbinc is the interface for all database backend
 */
 type BackendType int
 

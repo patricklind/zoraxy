@@ -14,12 +14,12 @@ var (
 )
 
 type healthResponse struct {
-	Status          string            `json:"status"`
-	NodeID          string            `json:"node_id,omitempty"`
-	NodeRole        string            `json:"node_role"`
-	ConfigRevision uint64            `json:"config_revision"`
-	AppliedRevision uint64           `json:"applied_revision"`
-	Checks          map[string]bool   `json:"checks,omitempty"`
+	Status          string          `json:"status"`
+	NodeID          string          `json:"node_id,omitempty"`
+	NodeRole        string          `json:"node_role"`
+	ConfigRevision  uint64          `json:"config_revision"`
+	AppliedRevision uint64          `json:"applied_revision"`
+	Checks          map[string]bool `json:"checks,omitempty"`
 }
 
 type readinessChecker func() map[string]bool
@@ -75,11 +75,11 @@ func handleLiveness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeHealthJSON(w, http.StatusOK, healthResponse{
-		Status:           "live",
-		NodeID:           nodeUUID,
-		NodeRole:         nodeRole(),
-		ConfigRevision:   desiredConfigRevision.Load(),
-		AppliedRevision:  appliedConfigRevision.Load(),
+		Status:          "live",
+		NodeID:          nodeUUID,
+		NodeRole:        nodeRole(),
+		ConfigRevision:  desiredConfigRevision.Load(),
+		AppliedRevision: appliedConfigRevision.Load(),
 	})
 }
 
@@ -99,12 +99,12 @@ func readinessHandler(check readinessChecker) http.HandlerFunc {
 			status = "ready"
 		}
 		writeHealthJSON(w, statusCode, healthResponse{
-			Status:           status,
-			NodeID:           nodeUUID,
-			NodeRole:         nodeRole(),
-			ConfigRevision:   desiredConfigRevision.Load(),
-			AppliedRevision:  appliedConfigRevision.Load(),
-			Checks:           checks,
+			Status:          status,
+			NodeID:          nodeUUID,
+			NodeRole:        nodeRole(),
+			ConfigRevision:  desiredConfigRevision.Load(),
+			AppliedRevision: appliedConfigRevision.Load(),
+			Checks:          checks,
 		})
 	}
 }
