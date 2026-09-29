@@ -78,18 +78,23 @@ func (router *Router) handleRateLimit(w http.ResponseWriter, r *http.Request, pe
 
 // Start the ticker routine for reseting the rate limit counter every seconds
 func (r *Router) startRateLimterCounterResetTicker() error {
-	if r.rateLimterStop != nil {
+	r.rateLimiterMu.Lock()
+	defer r.rateLimiterMu.Unlock()
+	if r.rateLimiterStop != nil {
 		return errors.New("another rate limiter ticker already running")
 	}
-	tickerStopChan := make(chan bool)
-	r.rateLimterStop = tickerStopChan
+	tickerStopChan := make(chan struct{})
+	tickerDoneChan := make(chan struct{})
+	r.rateLimiterStop = tickerStopChan
+	r.rateLimiterDone = tickerDoneChan
 
 	counterResetTicker := time.NewTicker(1 * time.Second)
 	go func() {
+		defer close(tickerDoneChan)
+		defer counterResetTicker.Stop()
 		for {
 			select {
 			case <-tickerStopChan:
-				r.rateLimterStop = nil
 				return
 			case <-counterResetTicker.C:
 				r.rateLimitCounter.Clear()
@@ -98,4 +103,20 @@ func (r *Router) startRateLimterCounterResetTicker() error {
 	}()
 
 	return nil
+}
+
+func (r *Router) stopRateLimiterCounterResetTicker() {
+	r.rateLimiterMu.Lock()
+	stop := r.rateLimiterStop
+	done := r.rateLimiterDone
+	if stop != nil {
+		r.rateLimiterStop = nil
+		r.rateLimiterDone = nil
+		close(stop)
+	}
+	r.rateLimiterMu.Unlock()
+
+	if done != nil {
+		<-done
+	}
 }

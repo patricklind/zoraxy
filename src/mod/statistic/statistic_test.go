@@ -3,6 +3,7 @@ package statistic_test
 import (
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -104,9 +105,33 @@ func TestRecordRequest(t *testing.T) {
 		Target:                        "target1",
 	}
 	collector.RecordRequest(requestInfo)
-	time.Sleep(1 * time.Second) // Wait for the goroutine to finish
 	if collector.DailySummary.TotalRequest != 1 {
 		t.Fatalf("Expected TotalRequest to be 1, got %v", collector.DailySummary.TotalRequest)
+	}
+}
+
+func TestRecordRequestConcurrentSnapshot(t *testing.T) {
+	db := getNewDatabase()
+	defer clearDatabase(db)
+	collector, err := statistic.NewStatisticCollector(statistic.CollectorOption{Database: db})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const requests = 100
+	var wg sync.WaitGroup
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			collector.RecordRequest(statistic.RequestInfo{Succ: true, ForwardType: "http"})
+			_ = collector.GetExportSummary()
+		}()
+	}
+	wg.Wait()
+
+	if got := collector.GetExportSummary().TotalRequest; got != requests {
+		t.Fatalf("expected %d recorded requests, got %d", requests, got)
 	}
 }
 

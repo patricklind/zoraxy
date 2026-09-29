@@ -100,6 +100,8 @@ func DailySummaryExportToSummary(export DailySummaryExport) DailySummary {
 
 // External object function call
 func (c *Collector) GetExportSummary() *DailySummaryExport {
+	c.summaryMu.Lock()
+	defer c.summaryMu.Unlock()
 	exportFormatDailySummary := DailySummaryToExport(*c.DailySummary)
 	return &exportFormatDailySummary
 }

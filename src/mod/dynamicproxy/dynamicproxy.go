@@ -240,9 +240,7 @@ func (router *Router) StartProxyService() error {
 		ln, err := net.Listen("tcp", router.server.Addr)
 		if err != nil {
 			router.server = nil
-			if router.rateLimterStop != nil {
-				router.rateLimterStop <- true
-			}
+			router.stopRateLimiterCounterResetTicker()
 			router.Option.Logger.PrintAndLog("dprouter", "Could not bind proxy listener", err)
 			return err
 		}
@@ -384,9 +382,7 @@ func (router *Router) StartProxyService() error {
 		ln, err := net.Listen("tcp", router.server.Addr)
 		if err != nil {
 			router.server = nil
-			if router.rateLimterStop != nil {
-				router.rateLimterStop <- true
-			}
+			router.stopRateLimiterCounterResetTicker()
 			router.Option.Logger.PrintAndLog("dprouter", "Could not bind proxy listener", err)
 			return err
 		}
@@ -731,14 +727,9 @@ func (router *Router) StopProxyService() error {
 	}
 	router.secondaryServerMutex.Unlock()
 
-	// Stop rate limiter ticker if exists
-	if router.rateLimterStop != nil {
-		wg.Add(1)
-		go func(ch chan bool) {
-			defer wg.Done()
-			ch <- true
-		}(router.rateLimterStop)
-	}
+	// Stop the rate limiter synchronously. Its lifecycle fields are protected so
+	// failed starts, restarts and concurrent shutdown cannot race with the ticker.
+	router.stopRateLimiterCounterResetTicker()
 
 	// Wait for all shutdown goroutines to finish
 	wg.Wait()
@@ -746,7 +737,6 @@ func (router *Router) StopProxyService() error {
 	router.server = nil
 	router.tlsListener = nil
 	router.tlsRedirectStop = nil
-	router.rateLimterStop = nil
 	router.h3Server = nil
 	router.h3Conn = nil
 	router.primaryListenerReady.Store(false)

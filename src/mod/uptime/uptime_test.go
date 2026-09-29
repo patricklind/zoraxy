@@ -15,11 +15,10 @@ import (
 // http.Transport every time and never closed/reused it. It verifies that
 // every connection opened by a check is closed again shortly after.
 func TestGetWebsiteStatusClosesConnections(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	}))
-	defer server.Close()
 
 	var opened, closed int64
 	var mu sync.Mutex
@@ -38,6 +37,8 @@ func TestGetWebsiteStatusClosesConnections(t *testing.T) {
 			atomic.AddInt64(&closed, 1)
 		}
 	}
+	server.Start()
+	defer server.Close()
 
 	m := &Monitor{Config: &Config{}}
 

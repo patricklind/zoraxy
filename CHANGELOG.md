@@ -9,6 +9,8 @@
   before proxy listeners open and does not load legacy HTTP routing files.
 + Add deterministic routing export/shadow comparison endpoints and a persistent
   systemd environment drop-in for Proxmox community-script LXC installations.
++ Fix data races during rate-limiter shutdown, statistics recording/export and
+  uptime connection-leak testing. Statistics writes now complete before return.
 
 # v3.3.4 22 Aug 2026
 

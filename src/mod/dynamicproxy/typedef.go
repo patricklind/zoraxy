@@ -118,8 +118,10 @@ type Router struct {
 	tlsBehaviorMutex sync.RWMutex //Mutex for tlsBehavior map
 	tlsRedirectStop  chan bool    //Stop channel for tls redirection server
 
-	rateLimterStop   chan bool              //Stop channel for rate limiter
-	rateLimitCounter RequestCountPerIpTable //Request counter for rate limter
+	rateLimiterMu    sync.Mutex             //Guards rate limiter lifecycle
+	rateLimiterStop  chan struct{}          //Closed to stop the rate limiter ticker
+	rateLimiterDone  chan struct{}          //Closed after the ticker has stopped
+	rateLimitCounter RequestCountPerIpTable //Request counter for rate limiter
 
 	captchaSessionStore *captcha.SessionStore //CAPTCHA session store for tracking verified sessions
 

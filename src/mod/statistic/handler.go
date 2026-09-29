@@ -17,7 +17,7 @@ import (
 func (c *Collector) HandleTodayStatLoad(w http.ResponseWriter, r *http.Request) {
 
 	fast, _ := utils.GetBool(r, "fast")
-	d := c.DailySummary
+	d := c.GetExportSummary()
 	if fast {
 		//Only return the counter
 		exported := DailySummaryExport{

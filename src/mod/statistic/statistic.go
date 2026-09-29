@@ -201,7 +201,11 @@ func (c *Collector) writeSummary(summaryKey string, summary *DailySummary) {
 
 // Get the daily summary up until now
 func (c *Collector) GetCurrentDailySummary() *DailySummary {
-	return c.DailySummary
+	c.summaryMu.Lock()
+	defer c.summaryMu.Unlock()
+	snapshot := DailySummaryToExport(*c.DailySummary)
+	copy := DailySummaryExportToSummary(snapshot)
+	return &copy
 }
 
 // Load the summary of a day given
@@ -245,78 +249,77 @@ func (c *Collector) Close() {
 	c.SaveSummaryOfDay()
 }
 
-// Main function to record all the inbound traffics
-// Note that this function run in go routine and might have concurrent R/W issue
-// Please make sure there is no racing paramters in this function
+// RecordRequest records one inbound request before returning. summaryMu makes the
+// counter updates, map increments, rollover and export operations one coherent
+// snapshot. Callers already invoke this from request-serving goroutines, so an
+// additional untracked goroutine only introduced races and made shutdown lossy.
 func (c *Collector) RecordRequest(ri RequestInfo) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Println("[Statistic] Recovered from panic while recording request: ", r)
-			}
-		}()
-
-		c.DailySummary.TotalRequest++
-		if ri.Succ {
-			c.DailySummary.ValidRequest++
-		} else {
-			c.DailySummary.ErrorRequest++
+	c.summaryMu.Lock()
+	defer c.summaryMu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("[Statistic] Recovered from panic while recording request: ", r)
 		}
-
-		//Store the request info into correct types of maps. c.incr is
-		//either the original upstream Load/Store pattern (unbounded) or
-		//a capped variant that drops the lowest-count entries when
-		//full. Selected once at startup based on the -stats_max_entries
-		//flag (default 0 = unbounded).
-		c.incr(c.DailySummary.ForwardTypes, c.DailySummary.bounded.ForwardTypes, ri.ForwardType)
-
-		//Record the HTTP method of the request
-		if ri.RequestMethod != "" {
-			c.incr(c.DailySummary.RequestMethods, c.DailySummary.bounded.RequestMethods, ri.RequestMethod)
-		}
-
-		originISO := strings.ToLower(ri.RequestOriginalCountryISOCode)
-		c.incr(c.DailySummary.RequestOrigin, c.DailySummary.bounded.RequestOrigin, originISO)
-
-		//Filter out CF forwarded requests
-		if strings.Contains(ri.IpAddr, ",") {
-			ips := strings.Split(strings.TrimSpace(ri.IpAddr), ",")
-			if len(ips) >= 1 && IsValidIPAddress(strings.TrimPrefix(ips[0], "[")) {
-				//Example when forwarded from CF: 158.250.160.114,109.21.249.211
-				//Or IPv6 [15c4:cbb4:cc98:4291:ffc1:3a46:06a1:51a7],109.21.249.211
-				ri.IpAddr = ips[0]
-			}
-		}
-
-		c.incr(c.DailySummary.RequestClientIp, c.DailySummary.bounded.RequestClientIp, ri.IpAddr)
-
-		//Record the referer
-		p := bluemonday.StripTagsPolicy()
-		filteredReferer := p.Sanitize(
-			ri.Referer,
-		)
-		c.incr(c.DailySummary.Referer, c.DailySummary.bounded.Referer, truncateStatKey(filteredReferer))
-
-		//Record the UserAgent
-		c.incr(c.DailySummary.UserAgent, c.DailySummary.bounded.UserAgent, truncateStatKey(ri.UserAgent))
-
-		//Record request URL, if it is a page
-		ext := filepath.Ext(ri.RequestURL)
-
-		if ext != "" && !isWebPageExtension(ext) {
-			return
-		}
-
-		c.incr(c.DailySummary.RequestURL, c.DailySummary.bounded.RequestURL, truncateStatKey(ri.RequestURL))
-
-		//Record the downstream hostname
-		//This is the hostname that the user visited, not the target domain
-		c.incr(c.DailySummary.DownstreamHostnames, c.DailySummary.bounded.DownstreamHostnames, ri.Target)
-
-		//Record the upstream hostname
-		//This is the selected load balancer upstream hostname or ip
-		c.incr(c.DailySummary.UpstreamHostnames, c.DailySummary.bounded.UpstreamHostnames, ri.Upstream)
 	}()
+
+	c.DailySummary.TotalRequest++
+	if ri.Succ {
+		c.DailySummary.ValidRequest++
+	} else {
+		c.DailySummary.ErrorRequest++
+	}
+
+	//Store the request info into correct types of maps. c.incr is
+	//either the original upstream Load/Store pattern (unbounded) or
+	//a capped variant that drops the lowest-count entries when
+	//full. Selected once at startup based on the -stats_max_entries
+	//flag (default 0 = unbounded).
+	c.incr(c.DailySummary.ForwardTypes, c.DailySummary.bounded.ForwardTypes, ri.ForwardType)
+
+	//Record the HTTP method of the request
+	if ri.RequestMethod != "" {
+		c.incr(c.DailySummary.RequestMethods, c.DailySummary.bounded.RequestMethods, ri.RequestMethod)
+	}
+
+	originISO := strings.ToLower(ri.RequestOriginalCountryISOCode)
+	c.incr(c.DailySummary.RequestOrigin, c.DailySummary.bounded.RequestOrigin, originISO)
+
+	//Filter out CF forwarded requests
+	if strings.Contains(ri.IpAddr, ",") {
+		ips := strings.Split(strings.TrimSpace(ri.IpAddr), ",")
+		if len(ips) >= 1 && IsValidIPAddress(strings.TrimPrefix(ips[0], "[")) {
+			//Example when forwarded from CF: 158.250.160.114,109.21.249.211
+			//Or IPv6 [15c4:cbb4:cc98:4291:ffc1:3a46:06a1:51a7],109.21.249.211
+			ri.IpAddr = ips[0]
+		}
+	}
+
+	c.incr(c.DailySummary.RequestClientIp, c.DailySummary.bounded.RequestClientIp, ri.IpAddr)
+
+	//Record the referer
+	p := bluemonday.StripTagsPolicy()
+	filteredReferer := p.Sanitize(ri.Referer)
+	c.incr(c.DailySummary.Referer, c.DailySummary.bounded.Referer, truncateStatKey(filteredReferer))
+
+	//Record the UserAgent
+	c.incr(c.DailySummary.UserAgent, c.DailySummary.bounded.UserAgent, truncateStatKey(ri.UserAgent))
+
+	//Record request URL, if it is a page
+	ext := filepath.Ext(ri.RequestURL)
+
+	if ext != "" && !isWebPageExtension(ext) {
+		return
+	}
+
+	c.incr(c.DailySummary.RequestURL, c.DailySummary.bounded.RequestURL, truncateStatKey(ri.RequestURL))
+
+	//Record the downstream hostname
+	//This is the hostname that the user visited, not the target domain
+	c.incr(c.DailySummary.DownstreamHostnames, c.DailySummary.bounded.DownstreamHostnames, ri.Target)
+
+	//Record the upstream hostname
+	//This is the selected load balancer upstream hostname or ip
+	c.incr(c.DailySummary.UpstreamHostnames, c.DailySummary.bounded.UpstreamHostnames, ri.Upstream)
 
 	//ADD MORE HERE IF NEEDED
 }
