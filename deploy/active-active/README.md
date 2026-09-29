@@ -9,6 +9,19 @@ PostgreSQL transactions, change watching and failure-safe activation. The SQL
 migration defines the authoritative configuration, per-node convergence state,
 encrypted certificate revisions and a single certificate-controller lease.
 
+The repository now persists desired/applied revision and activation errors for
+each data node. `NodeStatusHandler` provides the authenticated management API
+contract for listing that state; it must be mounted by the control-plane
+bootstrap when that process is introduced.
+
+Run the PostgreSQL-backed repository and convergence tests entirely in Docker:
+
+```sh
+docker compose -f deploy/active-active/compose.test.yaml up \
+  --build --abort-on-container-exit --exit-code-from configstore-test
+docker compose -f deploy/active-active/compose.test.yaml down --volumes
+```
+
 ## Required implementation order
 
 1. Inventory every write currently made to `sys.db` and `conf/`. Move one

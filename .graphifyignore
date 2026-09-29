@@ -1,0 +1,9 @@
+graphify-out/
+.git/
+src/web/
+src/mod/sshprox/gotty/
+docs/
+img/
+example/
+build/
+src/dist/

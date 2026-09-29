@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: zoraxy
+      POSTGRES_USER: zoraxy
+      POSTGRES_PASSWORD: zoraxy-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zoraxy -d zoraxy"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./schema/001_control_plane.sql:/docker-entrypoint-initdb.d/001_control_plane.sql:ro
+
+  configstore-test:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.test
+    command: ["go", "test", "-count=1", "./mod/configstore"]
+    environment:
+      CONFIGSTORE_POSTGRES_DSN: postgres://zoraxy:zoraxy-test@postgres:5432/zoraxy?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
