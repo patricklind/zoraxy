@@ -20,8 +20,12 @@ import (
 
 // Check if the request URI matches any of the proxy endpoint
 func (router *Router) getTargetProxyEndpointFromRequestURI(requestURI string) *ProxyEndpoint {
+	return router.getTargetProxyEndpointFromRequestURIState(router.currentRoutingState(), requestURI)
+}
+
+func (router *Router) getTargetProxyEndpointFromRequestURIState(state *routingState, requestURI string) *ProxyEndpoint {
 	var targetProxyEndpoint *ProxyEndpoint = nil
-	router.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	state.endpoints.Range(func(key, value interface{}) bool {
 		rootname := key.(string)
 		if strings.HasPrefix(requestURI, rootname) {
 			thisProxyEndpoint := value.(*ProxyEndpoint)
@@ -35,9 +39,13 @@ func (router *Router) getTargetProxyEndpointFromRequestURI(requestURI string) *P
 
 // Get the proxy endpoint from hostname, which might includes checking of wildcard certificates
 func (router *Router) GetProxyEndpointFromHostname(hostname string) *ProxyEndpoint {
+	return router.getProxyEndpointFromHostnameState(router.currentRoutingState(), hostname)
+}
+
+func (router *Router) getProxyEndpointFromHostnameState(state *routingState, hostname string) *ProxyEndpoint {
 	var targetSubdomainEndpoint *ProxyEndpoint = nil
 	hostname = strings.ToLower(hostname)
-	ep, ok := router.ProxyEndpoints.Load(hostname)
+	ep, ok := state.endpoints.Load(hostname)
 	if ok {
 		//Exact hit
 		targetSubdomainEndpoint = ep.(*ProxyEndpoint)
@@ -48,7 +56,7 @@ func (router *Router) GetProxyEndpointFromHostname(hostname string) *ProxyEndpoi
 
 	//No hit. Try with wildcard and alias
 	matchProxyEndpoints := []*ProxyEndpoint{}
-	router.ProxyEndpoints.Range(func(k, v interface{}) bool {
+	state.endpoints.Range(func(k, v interface{}) bool {
 		ep := v.(*ProxyEndpoint)
 		if ep.Disabled {
 			//Skip disabled endpoint
@@ -366,7 +374,7 @@ func (h *ProxyHandler) vdirRequest(w http.ResponseWriter, r *http.Request, targe
 		NoRemoveHopByHop:               headerRewriteOptions.DisableHopByHopHeaderRemoval,
 		AllowUpgrade:                   target.parent.EnableUpgradeForwarding,
 		Version:                        target.parent.parent.Option.HostVersion,
-		DevelopmentMode:                 target.parent.parent.Option.DevelopmentMode,
+		DevelopmentMode:                target.parent.parent.Option.DevelopmentMode,
 		AltSvc:                         h.Parent.getAltSvcValue(),
 	})
 

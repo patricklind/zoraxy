@@ -139,7 +139,6 @@ func NewDynamicProxy(option RouterOption) (*Router, error) {
 	proxyMap := sync.Map{}
 	thisRouter := Router{
 		Option:              &option,
-		ProxyEndpoints:      &proxyMap,
 		Running:             false,
 		server:              nil,
 		routingRules:        []*RoutingRule{},
@@ -153,6 +152,7 @@ func NewDynamicProxy(option RouterOption) (*Router, error) {
 	thisRouter.mux = &ProxyHandler{
 		Parent: &thisRouter,
 	}
+	thisRouter.routingState.Store(&routingState{endpoints: &proxyMap})
 
 	return &thisRouter, nil
 }
@@ -200,7 +200,7 @@ func (router *Router) StartProxyService() error {
 	}
 
 	//Check if root route is set
-	if router.Root == nil {
+	if router.RootEndpoint() == nil {
 		return errors.New("reverse proxy router root not set")
 	}
 
@@ -282,7 +282,7 @@ func (router *Router) StartProxyService() error {
 							w.Write([]byte("400 - Bad Request"))
 						} else {
 							//No defined sub-domain
-							if router.Root.DefaultSiteOption == DefaultSite_NoResponse {
+							if router.RootEndpoint().DefaultSiteOption == DefaultSite_NoResponse {
 								//No response. Just close the connection
 								hijacker, ok := w.(http.Hijacker)
 								if !ok {
@@ -573,7 +573,7 @@ func (router *Router) startSecondaryListeners() {
 				// No matching proxy rule for this domain+port combination
 				// Use default site behavior
 				// TODO: Make this behave like the primary listening port
-				if router.Root.DefaultSiteOption == DefaultSite_NoResponse {
+				if router.RootEndpoint().DefaultSiteOption == DefaultSite_NoResponse {
 					// No response. Just close the connection
 					hijacker, ok := w.(http.Hijacker)
 					if !ok {
@@ -766,7 +766,7 @@ func (router *Router) StopProxyService() error {
 // IsReady reports whether the primary listener is bound and a root routing
 // configuration is installed. It intentionally does not probe upstreams.
 func (router *Router) IsReady() bool {
-	return router != nil && router.Root != nil && router.primaryListenerReady.Load()
+	return router != nil && router.RootEndpoint() != nil && router.primaryListenerReady.Load()
 }
 
 // Restart safely restarts the proxy server
@@ -817,7 +817,7 @@ Load routing from RP
 */
 func (router *Router) LoadProxy(matchingDomain string) (*ProxyEndpoint, error) {
 	var targetProxyEndpoint *ProxyEndpoint
-	router.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	router.RangeProxyEndpoints(func(key, value interface{}) bool {
 		key, ok := key.(string)
 		if !ok {
 			return true
@@ -855,7 +855,7 @@ func CopyEndpoint(endpoint *ProxyEndpoint) *ProxyEndpoint {
 
 func (r *Router) GetProxyEndpointsAsMap() map[string]*ProxyEndpoint {
 	m := make(map[string]*ProxyEndpoint)
-	r.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	r.RangeProxyEndpoints(func(key, value interface{}) bool {
 		k, ok := key.(string)
 		if !ok {
 			return true
@@ -876,7 +876,7 @@ func (r *Router) GetProxyEndpointsAsMap() map[string]*ProxyEndpoint {
 func (r *Router) GetCommonListeningPorts() map[string][]string {
 	portMap := make(map[string][]string)
 
-	r.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	r.RangeProxyEndpoints(func(key, value interface{}) bool {
 		domain, ok := key.(string)
 		if !ok {
 			return true

@@ -5,12 +5,91 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"imuslab.com/zoraxy/mod/dynamicproxy/dpcore"
 	"imuslab.com/zoraxy/mod/dynamicproxy/exploits"
 	"imuslab.com/zoraxy/mod/utils"
 )
+
+func (router *Router) currentRoutingState() *routingState {
+	state := router.routingState.Load()
+	if state != nil {
+		return state
+	}
+	empty := &routingState{endpoints: &sync.Map{}}
+	if router.routingState.CompareAndSwap(nil, empty) {
+		return empty
+	}
+	return router.routingState.Load()
+}
+
+func (router *Router) RootEndpoint() *ProxyEndpoint {
+	return router.currentRoutingState().root
+}
+
+func (router *Router) publishRootEndpoint(endpoint *ProxyEndpoint) {
+	endpoint.parent = router
+	for {
+		current := router.currentRoutingState()
+		next := &routingState{root: endpoint, endpoints: current.endpoints}
+		if router.routingState.CompareAndSwap(current, next) {
+			return
+		}
+	}
+}
+
+func (router *Router) RangeProxyEndpoints(fn func(key, value any) bool) {
+	router.currentRoutingState().endpoints.Range(fn)
+}
+
+func (router *Router) LoadProxyEndpoint(key string) (*ProxyEndpoint, bool) {
+	value, ok := router.currentRoutingState().endpoints.Load(key)
+	if !ok {
+		return nil, false
+	}
+	endpoint, ok := value.(*ProxyEndpoint)
+	return endpoint, ok
+}
+
+// SwapRoutingSnapshot atomically publishes a complete prepared routing
+// revision. Requests already in progress retain their previously loaded state.
+func (router *Router) SwapRoutingSnapshot(snapshot RoutingSnapshot) (RoutingSnapshot, error) {
+	if snapshot.Root == nil {
+		return RoutingSnapshot{}, errors.New("routing snapshot root is required")
+	}
+
+	endpointMap := &sync.Map{}
+	for key, endpoint := range snapshot.Endpoints {
+		if endpoint == nil {
+			return RoutingSnapshot{}, errors.New("routing snapshot contains a nil endpoint")
+		}
+		lookupKey := strings.ToLower(strings.TrimSpace(key))
+		if lookupKey == "" {
+			return RoutingSnapshot{}, errors.New("routing snapshot contains an empty endpoint key")
+		}
+		endpoint.parent = router
+		endpointMap.Store(lookupKey, endpoint)
+	}
+	snapshot.Root.parent = router
+
+	previousState := router.routingState.Swap(&routingState{root: snapshot.Root, endpoints: endpointMap})
+	previous := RoutingSnapshot{Endpoints: make(map[string]*ProxyEndpoint)}
+	if previousState == nil {
+		return previous, nil
+	}
+	previous.Root = previousState.root
+	previousState.endpoints.Range(func(key, value any) bool {
+		lookupKey, keyOK := key.(string)
+		endpoint, endpointOK := value.(*ProxyEndpoint)
+		if keyOK && endpointOK {
+			previous.Endpoints[lookupKey] = endpoint
+		}
+		return true
+	})
+	return previous, nil
+}
 
 /*
 	Dynamic Proxy Router Functions
@@ -79,7 +158,7 @@ func (router *Router) AddProxyRouteToRuntime(endpoint *ProxyEndpoint) error {
 	lookupHostname := strings.ToLower(endpoint.RootOrMatchingDomain)
 	if len(endpoint.ActiveOrigins) == 0 {
 		//There are no active origins. No need to check for ready
-		router.ProxyEndpoints.Store(lookupHostname, endpoint)
+		router.currentRoutingState().endpoints.Store(lookupHostname, endpoint)
 		return nil
 	}
 	if !router.loadBalancer.UpstreamsReady(endpoint.ActiveOrigins) {
@@ -87,7 +166,7 @@ func (router *Router) AddProxyRouteToRuntime(endpoint *ProxyEndpoint) error {
 		return errors.New("proxy endpoint not ready. Use PrepareProxyRoute before adding to runtime")
 	}
 	// Push record into running subdomain endpoints
-	router.ProxyEndpoints.Store(lookupHostname, endpoint)
+	router.currentRoutingState().endpoints.Store(lookupHostname, endpoint)
 	return nil
 }
 
@@ -98,7 +177,7 @@ func (router *Router) SetProxyRouteAsRoot(endpoint *ProxyEndpoint) error {
 		return errors.New("proxy endpoint not ready. Use PrepareProxyRoute before adding to runtime")
 	}
 	// Push record into running root endpoints
-	router.Root = endpoint
+	router.publishRootEndpoint(endpoint)
 	return nil
 }
 
@@ -116,7 +195,7 @@ func (router *Router) RemoveProxyEndpointByRootname(rootnameOrMatchingDomain str
 // It returns the ProxyEndpoint if found, or an error if not found.
 func (h *Router) GetProxyEndpointById(searchingDomain string, includeAlias bool) (*ProxyEndpoint, error) {
 	var found *ProxyEndpoint
-	h.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	h.RangeProxyEndpoints(func(key, value interface{}) bool {
 		proxy, ok := value.(*ProxyEndpoint)
 		if ok && (proxy.RootOrMatchingDomain == searchingDomain || (includeAlias && utils.StringInArray(proxy.MatchingDomainAlias, searchingDomain))) {
 			found = proxy
@@ -132,7 +211,7 @@ func (h *Router) GetProxyEndpointById(searchingDomain string, includeAlias bool)
 
 func (h *Router) GetProxyEndpointByAlias(alias string) (*ProxyEndpoint, error) {
 	var found *ProxyEndpoint
-	h.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	h.RangeProxyEndpoints(func(key, value interface{}) bool {
 		proxy, ok := value.(*ProxyEndpoint)
 		if !ok {
 			return true

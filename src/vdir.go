@@ -40,7 +40,7 @@ func ReverseProxyListVdir(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if eptype == "root" {
-		targetEndpoint = dynamicProxyRouter.Root
+		targetEndpoint = dynamicProxyRouter.RootEndpoint()
 	} else {
 		utils.SendErrorResponse(w, "invalid type given")
 		return
@@ -89,11 +89,11 @@ func ReverseProxyAddVdir(w http.ResponseWriter, r *http.Request) {
 	var targetProxyEndpoint *dynamicproxy.ProxyEndpoint
 	if eptype == "root" {
 		//Check if root is running at reverse proxy mode
-		if dynamicProxyRouter.Root.DefaultSiteOption != dynamicproxy.DefaultSite_ReverseProxy {
+		if dynamicProxyRouter.RootEndpoint().DefaultSiteOption != dynamicproxy.DefaultSite_ReverseProxy {
 			utils.SendErrorResponse(w, "virtual directory can only be added to root router under proxy mode")
 			return
 		}
-		targetProxyEndpoint = dynamicProxyRouter.Root
+		targetProxyEndpoint = dynamicProxyRouter.RootEndpoint()
 	} else if eptype == "host" {
 		endpointID, err := utils.PostPara(r, "endpoint")
 		if err != nil {
@@ -151,7 +151,7 @@ func ReverseProxyDeleteVdir(w http.ResponseWriter, r *http.Request) {
 
 	var targetEndpoint *dynamicproxy.ProxyEndpoint
 	if eptype == "root" {
-		targetEndpoint = dynamicProxyRouter.Root
+		targetEndpoint = dynamicProxyRouter.RootEndpoint()
 	} else if eptype == "host" {
 		//Proxy rule
 		matchingPath, err := utils.PostPara(r, "path")
@@ -217,7 +217,7 @@ func ReverseProxyEditVdir(w http.ResponseWriter, r *http.Request) {
 
 	var targetEndpoint *dynamicproxy.ProxyEndpoint
 	if eptype == "root" {
-		targetEndpoint = dynamicProxyRouter.Root
+		targetEndpoint = dynamicProxyRouter.RootEndpoint()
 
 	} else if eptype == "host" {
 		//Proxy rule
@@ -309,7 +309,7 @@ func ReverseProxyBulkApplyVdirByForwardAuth(w http.ResponseWriter, r *http.Reque
 	// Collect the target host endpoints first so we don't mutate the map while ranging it.
 	// "add" applies to hosts using Forward Auth; "remove" applies to all other hosts.
 	targets := []*dynamicproxy.ProxyEndpoint{}
-	dynamicProxyRouter.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	dynamicProxyRouter.RangeProxyEndpoints(func(key, value interface{}) bool {
 		ep, ok := value.(*dynamicproxy.ProxyEndpoint)
 		if !ok {
 			return true

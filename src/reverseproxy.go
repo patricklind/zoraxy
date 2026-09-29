@@ -268,7 +268,7 @@ func ReverseProxyInit() {
 		}
 	}
 
-	if dynamicProxyRouter.Root == nil {
+	if dynamicProxyRouter.RootEndpoint() == nil {
 		//Root config not set (new deployment?), use internal static web server as root
 		defaultRootRouter, err := GetDefaultRootConfig()
 		if err != nil {
@@ -1760,16 +1760,16 @@ func ReverseProxyListDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		epname = strings.ToLower(strings.TrimSpace(epname))
-		endpointRaw, ok := dynamicProxyRouter.ProxyEndpoints.Load(epname)
+		endpointRaw, ok := dynamicProxyRouter.LoadProxyEndpoint(epname)
 		if !ok {
 			utils.SendErrorResponse(w, "proxy rule not found")
 			return
 		}
-		targetEndpoint := dynamicproxy.CopyEndpoint(endpointRaw.(*dynamicproxy.ProxyEndpoint))
+		targetEndpoint := dynamicproxy.CopyEndpoint(endpointRaw)
 		js, _ := json.Marshal(targetEndpoint)
 		utils.SendJSONResponse(w, string(js))
 	} else if eptype == "root" {
-		js, _ := json.Marshal(dynamicProxyRouter.Root)
+		js, _ := json.Marshal(dynamicProxyRouter.RootEndpoint())
 		utils.SendJSONResponse(w, string(js))
 	} else {
 		utils.SendErrorResponse(w, "Invalid type given")
@@ -1779,7 +1779,7 @@ func ReverseProxyListDetail(w http.ResponseWriter, r *http.Request) {
 // List all tags used in the proxy rules
 func ReverseProxyListTags(w http.ResponseWriter, r *http.Request) {
 	results := []string{}
-	dynamicProxyRouter.ProxyEndpoints.Range(func(key, value interface{}) bool {
+	dynamicProxyRouter.RangeProxyEndpoints(func(key, value interface{}) bool {
 		thisEndpoint := value.(*dynamicproxy.ProxyEndpoint)
 		for _, tag := range thisEndpoint.Tags {
 			if !utils.StringInArray(results, tag) {
@@ -1802,7 +1802,7 @@ func ReverseProxyList(w http.ResponseWriter, r *http.Request) {
 
 	if eptype == "host" {
 		results := []*dynamicproxy.ProxyEndpoint{}
-		dynamicProxyRouter.ProxyEndpoints.Range(func(key, value interface{}) bool {
+		dynamicProxyRouter.RangeProxyEndpoints(func(key, value interface{}) bool {
 			thisEndpoint := dynamicproxy.CopyEndpoint(value.(*dynamicproxy.ProxyEndpoint))
 			//Clear the auth passwords before showing to front-end
 			cleanedCredentials := []*dynamicproxy.BasicAuthCredentials{}
@@ -1824,7 +1824,7 @@ func ReverseProxyList(w http.ResponseWriter, r *http.Request) {
 		js, _ := json.Marshal(results)
 		utils.SendJSONResponse(w, string(js))
 	} else if eptype == "root" {
-		js, _ := json.Marshal(dynamicProxyRouter.Root)
+		js, _ := json.Marshal(dynamicProxyRouter.RootEndpoint())
 		utils.SendJSONResponse(w, string(js))
 	} else {
 		utils.SendErrorResponse(w, "Invalid type given")
@@ -2103,12 +2103,12 @@ func HandleIncomingPortSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rootProxyTargetOrigin := ""
-	if len(dynamicProxyRouter.Root.ActiveOrigins) > 0 {
-		rootProxyTargetOrigin = dynamicProxyRouter.Root.ActiveOrigins[0].OriginIpOrDomain
+	if len(dynamicProxyRouter.RootEndpoint().ActiveOrigins) > 0 {
+		rootProxyTargetOrigin = dynamicProxyRouter.RootEndpoint().ActiveOrigins[0].OriginIpOrDomain
 	}
 
 	//Check if it is identical as proxy root (recursion!)
-	if dynamicProxyRouter.Root == nil || rootProxyTargetOrigin == "" {
+	if dynamicProxyRouter.RootEndpoint() == nil || rootProxyTargetOrigin == "" {
 		//Check if proxy root is set before checking recursive listen
 		//Fixing issue #43
 		utils.SendErrorResponse(w, "Set Proxy Root before changing inbound port")
@@ -2156,7 +2156,7 @@ func HandleCustomHeaderList(w http.ResponseWriter, r *http.Request) {
 
 	var targetProxyEndpoint *dynamicproxy.ProxyEndpoint
 	if epType == "root" {
-		targetProxyEndpoint = dynamicProxyRouter.Root
+		targetProxyEndpoint = dynamicProxyRouter.RootEndpoint()
 	} else {
 		ep, err := dynamicProxyRouter.LoadProxy(domain)
 		if err != nil {

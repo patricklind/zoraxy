@@ -21,7 +21,7 @@ func testReadinessRouter(t *testing.T, port int) *Router {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router.Root = &ProxyEndpoint{}
+	router.publishRootEndpoint(&ProxyEndpoint{})
 	return router
 }
 

@@ -43,7 +43,7 @@ func currentReadinessChecks() map[string]bool {
 		checks["database"] = sysdb.TableExists("settings")
 	}
 	if dynamicProxyRouter != nil {
-		checks["proxy_config"] = dynamicProxyRouter.Root != nil
+		checks["proxy_config"] = dynamicProxyRouter.RootEndpoint() != nil
 		checks["proxy_listener"] = dynamicProxyRouter.IsReady()
 	}
 	return checks

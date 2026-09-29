@@ -45,9 +45,9 @@ type TrafficMapUpstream struct {
 
 // TrafficMapProxy represents a proxy rule node for the traffic flow diagram
 type TrafficMapProxy struct {
-	Domain       string               `json:"domain"`
-	Disabled     bool                 `json:"disabled"`
-	RequestCount int                  `json:"requestCount"`
+	Domain       string                `json:"domain"`
+	Disabled     bool                  `json:"disabled"`
+	RequestCount int                   `json:"requestCount"`
 	Upstreams    []*TrafficMapUpstream `json:"upstreams"`
 }
 
@@ -66,7 +66,9 @@ func HandleTrafficMapData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Helper to look up today's request count for a given key
-	lookupCount := func(m interface{ Load(key interface{}) (interface{}, bool) }, key string) int {
+	lookupCount := func(m interface {
+		Load(key interface{}) (interface{}, bool)
+	}, key string) int {
 		if v, ok := m.Load(key); ok {
 			if count, ok := v.(int); ok {
 				return count
@@ -75,7 +77,7 @@ func HandleTrafficMapData(w http.ResponseWriter, r *http.Request) {
 		return 0
 	}
 
-	dynamicProxyRouter.ProxyEndpoints.Range(func(_, value interface{}) bool {
+	dynamicProxyRouter.RangeProxyEndpoints(func(_, value interface{}) bool {
 		ep := value.(*dynamicproxy.ProxyEndpoint)
 		proxyNode := &TrafficMapProxy{
 			Domain:       ep.RootOrMatchingDomain,
@@ -244,9 +246,9 @@ func HandleStaticWebServerPortChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dynamicProxyRouter.Root.DefaultSiteOption == dynamicproxy.DefaultSite_InternalStaticWebServer {
+	if dynamicProxyRouter.RootEndpoint().DefaultSiteOption == dynamicproxy.DefaultSite_InternalStaticWebServer {
 		//Update the root site as well
-		newDraftingRoot := dynamicProxyRouter.Root.Clone()
+		newDraftingRoot := dynamicProxyRouter.RootEndpoint().Clone()
 
 		newDraftingRoot.ActiveOrigins = []*loadbalance.Upstream{
 			{
@@ -264,7 +266,10 @@ func HandleStaticWebServerPortChange(w http.ResponseWriter, r *http.Request) {
 		}
 
 		//Replace the root
-		dynamicProxyRouter.Root = activatedNewRoot
+		if err := dynamicProxyRouter.SetProxyRouteAsRoot(activatedNewRoot); err != nil {
+			utils.SendErrorResponse(w, "unable to activate root routing rule")
+			return
+		}
 
 		SaveReverseProxyConfig(newDraftingRoot)
 	}

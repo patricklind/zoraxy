@@ -320,7 +320,7 @@ func HandleDashboardOverview(w http.ResponseWriter, r *http.Request) {
 	proxyHostCount := 0
 	upstreamCount := 0
 	if dynamicProxyRouter != nil {
-		dynamicProxyRouter.ProxyEndpoints.Range(func(_, value interface{}) bool {
+		dynamicProxyRouter.RangeProxyEndpoints(func(_, value interface{}) bool {
 			ep := value.(*dynamicproxy.ProxyEndpoint)
 			proxyHostCount++
 			upstreamCount += len(ep.ActiveOrigins)

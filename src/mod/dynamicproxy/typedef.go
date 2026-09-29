@@ -99,10 +99,8 @@ type RouterOption struct {
 
 /* Router Object */
 type Router struct {
-	Option         *RouterOption
-	ProxyEndpoints *sync.Map      //Map of ProxyEndpoint objects, each ProxyEndpoint object is a routing rule that handle incoming requests
-	Running        bool           //If the router is running
-	Root           *ProxyEndpoint //Root proxy endpoint, default site
+	Option  *RouterOption
+	Running bool //If the router is running
 
 	/* Internals */
 	mux                  http.Handler              //HTTP handler
@@ -111,6 +109,7 @@ type Router struct {
 	routingRules         []*RoutingRule            //Special routing rules, handle high priority routing like ACME request handling
 	restarting           bool                      //If the router is restarting
 	primaryListenerReady atomic.Bool               //True only after the primary TCP listener is bound
+	routingState         atomic.Pointer[routingState]
 
 	h3Server *http3.Server  //HTTP/3 (QUIC) server, nil when disabled
 	h3Conn   net.PacketConn //UDP connection serving the HTTP/3 listener; closed on shutdown
@@ -129,6 +128,18 @@ type Router struct {
 	secondaryStopChans   map[string]chan bool    //Stop channels for secondary listening servers
 	secondaryServerMutex sync.RWMutex            //Mutex for accessing secondary server maps
 
+}
+
+type routingState struct {
+	root      *ProxyEndpoint
+	endpoints *sync.Map
+}
+
+// RoutingSnapshot is a complete routing revision. Callers must prepare every
+// endpoint before swapping it into a running router.
+type RoutingSnapshot struct {
+	Root      *ProxyEndpoint
+	Endpoints map[string]*ProxyEndpoint
 }
 
 /* Basic Auth Related Data structure*/

@@ -25,8 +25,29 @@ Zoraxy's authenticated management router to expose:
 `configstore.AtomicActivator` enforces the activation lifecycle: build and
 validate a complete candidate off-path, atomically swap through a runtime
 adapter, discard rejected candidates and retire the old runtime only after a
-successful swap. The Zoraxy-specific candidate builder and runtime adapter are
-still required before this bootstrap may be enabled in the main process.
+successful swap. Zoraxy's routing adapter now publishes the root route and all
+host routes as one atomic snapshot without restarting the TCP/UDP listeners.
+Requests already in progress retain their previous snapshot.
+
+Routing revision payload version 1 has this top-level shape:
+
+```json
+{
+  "version": 1,
+  "root": { "ProxyType": 0, "RootOrMatchingDomain": "/" },
+  "hosts": [
+    { "ProxyType": 1, "RootOrMatchingDomain": "app.example.com" }
+  ]
+}
+```
+
+`ProxyType` uses Zoraxy's existing JSON representation: `0` is the root route
+and `1` is a host route.
+
+Unknown top-level fields, unsupported versions, invalid proxy types, empty
+domains and duplicate case-insensitive host names are rejected before swap.
+The adapter remains disabled in the main process until PostgreSQL bootstrap,
+authentication and the migration mode are configured explicitly.
 
 Run the PostgreSQL-backed repository and convergence tests entirely in Docker:
 

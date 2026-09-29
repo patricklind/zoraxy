@@ -185,7 +185,7 @@ func (ep *ProxyEndpoint) AddVirtualDirectoryRule(vdir *VirtualDirectoryEndpoint)
 
 	switch ep.ProxyType {
 	case ProxyTypeRoot:
-		parentRouter.Root = readyRoutingRule
+		parentRouter.SetProxyRouteAsRoot(readyRoutingRule)
 	case ProxyTypeHost:
 		ep.Remove()
 		parentRouter.AddProxyRouteToRuntime(readyRoutingRule)
@@ -327,7 +327,7 @@ func (ep *ProxyEndpoint) Clone() *ProxyEndpoint {
 // Remove this proxy endpoint from running proxy endpoint list
 func (ep *ProxyEndpoint) Remove() error {
 	lookupHostname := strings.ToLower(ep.RootOrMatchingDomain)
-	ep.parent.ProxyEndpoints.Delete(lookupHostname)
+	ep.parent.currentRoutingState().endpoints.Delete(lookupHostname)
 	return nil
 }
 
@@ -341,5 +341,5 @@ func (ep *ProxyEndpoint) IsEnabled() bool {
 // that effects the proxy routing src / dest
 func (ep *ProxyEndpoint) UpdateToRuntime() {
 	lookupHostname := strings.ToLower(ep.RootOrMatchingDomain)
-	ep.parent.ProxyEndpoints.Store(lookupHostname, ep)
+	ep.parent.currentRoutingState().endpoints.Store(lookupHostname, ep)
 }
