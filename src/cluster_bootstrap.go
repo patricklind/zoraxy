@@ -96,6 +96,7 @@ func validateRoutingRevision(payload json.RawMessage) error {
 type preparedCluster struct {
 	config       clusterConfig
 	db           *sql.DB
+	store        configstore.Store
 	controlPlane *configstore.ControlPlane
 	current      configstore.Revision
 }
@@ -144,7 +145,7 @@ func prepareCluster() (*preparedCluster, error) {
 		db.Close()
 		return nil, err
 	}
-	prepared := &preparedCluster{config: config, db: db, controlPlane: controlPlane}
+	prepared := &preparedCluster{config: config, db: db, store: store, controlPlane: controlPlane}
 	if config.mode == clusterModeDataPlane {
 		configStoreDataPlaneMode = true
 		prepared.current, err = store.Current(startupContext)
@@ -171,6 +172,15 @@ func (p *preparedCluster) Start(authRouter *auth.RouterDef) error {
 	}
 	if p.config.mode == clusterModeControlPlane {
 		if err := p.controlPlane.RegisterManagementAPI(authRouter); err != nil {
+			p.db.Close()
+			return err
+		}
+		migrationHandler := routingMigrationHandler{router: dynamicProxyRouter, store: p.store}
+		if err := authRouter.HandleFunc(routingExportAPIPath, migrationHandler.export); err != nil {
+			p.db.Close()
+			return err
+		}
+		if err := authRouter.HandleFunc(routingShadowAPIPath, migrationHandler.shadow); err != nil {
 			p.db.Close()
 			return err
 		}

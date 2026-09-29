@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"imuslab.com/zoraxy/mod/configstore"
@@ -35,21 +36,89 @@ type zoraxyRoutingBuilder struct {
 	router *dynamicproxy.Router
 }
 
-func (b zoraxyRoutingBuilder) Build(_ context.Context, revision configstore.Revision) (configstore.Candidate, error) {
-	decoder := json.NewDecoder(bytes.NewReader(revision.Payload))
+func decodeRoutingRevisionDocument(payload json.RawMessage) (routingRevisionDocument, error) {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	var document routingRevisionDocument
 	if err := decoder.Decode(&document); err != nil {
-		return nil, fmt.Errorf("decode routing document: %w", err)
+		return routingRevisionDocument{}, fmt.Errorf("decode routing document: %w", err)
 	}
 	if err := ensureJSONDocumentEnd(decoder); err != nil {
-		return nil, err
+		return routingRevisionDocument{}, err
 	}
 	if document.Version != routingRevisionVersion {
-		return nil, fmt.Errorf("unsupported routing document version %d", document.Version)
+		return routingRevisionDocument{}, fmt.Errorf("unsupported routing document version %d", document.Version)
 	}
 	if document.Root.ProxyType != dynamicproxy.ProxyTypeRoot {
-		return nil, errors.New("routing document root must use root proxy type")
+		return routingRevisionDocument{}, errors.New("routing document root must use root proxy type")
+	}
+	seen := make(map[string]struct{}, len(document.Hosts))
+	for index := range document.Hosts {
+		host := &document.Hosts[index]
+		if host.ProxyType != dynamicproxy.ProxyTypeHost {
+			return routingRevisionDocument{}, fmt.Errorf("host %d must use host proxy type", index)
+		}
+		key := strings.ToLower(strings.TrimSpace(host.RootOrMatchingDomain))
+		if key == "" {
+			return routingRevisionDocument{}, fmt.Errorf("host %d has an empty matching domain", index)
+		}
+		if _, exists := seen[key]; exists {
+			return routingRevisionDocument{}, fmt.Errorf("duplicate host matching domain %q", key)
+		}
+		seen[key] = struct{}{}
+	}
+	return document, nil
+}
+
+func sortRoutingHosts(hosts []dynamicproxy.ProxyEndpoint) {
+	sort.Slice(hosts, func(i, j int) bool {
+		left := strings.ToLower(strings.TrimSpace(hosts[i].RootOrMatchingDomain))
+		right := strings.ToLower(strings.TrimSpace(hosts[j].RootOrMatchingDomain))
+		return left < right
+	})
+}
+
+func canonicalRoutingRevision(payload json.RawMessage) (json.RawMessage, error) {
+	document, err := decodeRoutingRevisionDocument(payload)
+	if err != nil {
+		return nil, err
+	}
+	sortRoutingHosts(document.Hosts)
+	canonical, err := json.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("encode canonical routing document: %w", err)
+	}
+	return canonical, nil
+}
+
+func routingRevisionFromRouter(router *dynamicproxy.Router) (json.RawMessage, error) {
+	if router == nil || router.RootEndpoint() == nil {
+		return nil, errors.New("dynamic proxy root route is required")
+	}
+	document := routingRevisionDocument{
+		Version: routingRevisionVersion,
+		Root:    *dynamicproxy.CopyEndpoint(router.RootEndpoint()),
+		Hosts:   []dynamicproxy.ProxyEndpoint{},
+	}
+	router.RangeProxyEndpoints(func(_, value any) bool {
+		endpoint, ok := value.(*dynamicproxy.ProxyEndpoint)
+		if ok && endpoint != nil {
+			document.Hosts = append(document.Hosts, *dynamicproxy.CopyEndpoint(endpoint))
+		}
+		return true
+	})
+	sortRoutingHosts(document.Hosts)
+	payload, err := json.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("encode routing revision: %w", err)
+	}
+	return payload, nil
+}
+
+func (b zoraxyRoutingBuilder) Build(_ context.Context, revision configstore.Revision) (configstore.Candidate, error) {
+	document, err := decodeRoutingRevisionDocument(revision.Payload)
+	if err != nil {
+		return nil, err
 	}
 
 	root, err := b.router.PrepareProxyRoute(&document.Root)
@@ -62,16 +131,7 @@ func (b zoraxyRoutingBuilder) Build(_ context.Context, revision configstore.Revi
 	}
 	for index := range document.Hosts {
 		host := &document.Hosts[index]
-		if host.ProxyType != dynamicproxy.ProxyTypeHost {
-			return nil, fmt.Errorf("host %d must use host proxy type", index)
-		}
 		key := strings.ToLower(strings.TrimSpace(host.RootOrMatchingDomain))
-		if key == "" {
-			return nil, fmt.Errorf("host %d has an empty matching domain", index)
-		}
-		if _, exists := snapshot.Endpoints[key]; exists {
-			return nil, fmt.Errorf("duplicate host matching domain %q", key)
-		}
 		prepared, err := b.router.PrepareProxyRoute(host)
 		if err != nil {
 			return nil, fmt.Errorf("prepare host %q: %w", key, err)
