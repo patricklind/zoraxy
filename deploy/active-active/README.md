@@ -14,6 +14,20 @@ each data node. `NodeStatusHandler` provides the authenticated management API
 contract for listing that state; it must be mounted by the control-plane
 bootstrap when that process is introduced.
 
+`configstore.ControlPlane` now supplies that bootstrap boundary. Mount it on
+Zoraxy's authenticated management router to expose:
+
+- `GET`/`PUT /api/cluster/config` for the current immutable revision and
+  compare-and-swap commits. `PUT` requires an exact `If-Match` revision.
+- `GET /api/cluster/nodes` for desired/applied revision and activation errors
+  from every reporting data node.
+
+`configstore.AtomicActivator` enforces the activation lifecycle: build and
+validate a complete candidate off-path, atomically swap through a runtime
+adapter, discard rejected candidates and retire the old runtime only after a
+successful swap. The Zoraxy-specific candidate builder and runtime adapter are
+still required before this bootstrap may be enabled in the main process.
+
 Run the PostgreSQL-backed repository and convergence tests entirely in Docker:
 
 ```sh
