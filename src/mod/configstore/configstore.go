@@ -34,6 +34,13 @@ type Activator interface {
 	Activate(ctx context.Context, revision Revision) error
 }
 
+// NodeStatusStore records data-plane convergence independently from revision
+// commits. Reporting failures must never roll back an already active runtime.
+type NodeStatusStore interface {
+	UpsertNodeStatus(ctx context.Context, status NodeStatus) error
+	ListNodeStatuses(ctx context.Context) ([]NodeStatus, error)
+}
+
 type NodeStatus struct {
 	NodeID          string    `json:"node_id"`
 	NodeRole        string    `json:"node_role"`

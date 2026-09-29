@@ -45,6 +45,51 @@ func (s *PostgresStore) Current(ctx context.Context) (Revision, error) {
 		FROM config_revisions ORDER BY revision DESC LIMIT 1`))
 }
 
+func (s *PostgresStore) UpsertNodeStatus(ctx context.Context, status NodeStatus) error {
+	if status.NodeID == "" {
+		return errors.New("node id is required")
+	}
+	if status.AppliedRevision > status.ConfigRevision {
+		return errors.New("applied revision cannot exceed desired configuration revision")
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO node_status
+			(node_id, node_role, config_revision, applied_revision, last_error, updated_at)
+		VALUES ($1, $2, $3, $4, $5, clock_timestamp())
+		ON CONFLICT (node_id) DO UPDATE SET
+			node_role = EXCLUDED.node_role,
+			config_revision = EXCLUDED.config_revision,
+			applied_revision = EXCLUDED.applied_revision,
+			last_error = EXCLUDED.last_error,
+			updated_at = clock_timestamp()`,
+		status.NodeID, status.NodeRole, status.ConfigRevision, status.AppliedRevision, status.LastError)
+	return err
+}
+
+func (s *PostgresStore) ListNodeStatuses(ctx context.Context) ([]NodeStatus, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT node_id::text, node_role, config_revision, applied_revision, last_error, updated_at
+		FROM node_status ORDER BY node_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statuses := make([]NodeStatus, 0)
+	for rows.Next() {
+		var status NodeStatus
+		if err := rows.Scan(&status.NodeID, &status.NodeRole, &status.ConfigRevision,
+			&status.AppliedRevision, &status.LastError, &status.UpdatedAt); err != nil {
+			return nil, err
+		}
+		statuses = append(statuses, status)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return statuses, nil
+}
+
 func (s *PostgresStore) Commit(ctx context.Context, expectedRevision uint64, payload json.RawMessage, createdBy string) (Revision, error) {
 	if !json.Valid(payload) {
 		return Revision{}, errors.New("configuration payload is not valid JSON")

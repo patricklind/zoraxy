@@ -29,6 +29,23 @@ func (a testActivator) Activate(_ context.Context, revision Revision) error {
 	return nil
 }
 
+type testNodeStatusStore struct {
+	updates []NodeStatus
+	err     error
+}
+
+func (s *testNodeStatusStore) UpsertNodeStatus(_ context.Context, status NodeStatus) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.updates = append(s.updates, status)
+	return nil
+}
+
+func (s *testNodeStatusStore) ListNodeStatuses(context.Context) ([]NodeStatus, error) {
+	return append([]NodeStatus(nil), s.updates...), s.err
+}
+
 func TestFollowKeepsServingAfterRejectedRevision(t *testing.T) {
 	revisions := make(chan Revision, 3)
 	revisions <- Revision{ID: 1}
@@ -56,5 +73,43 @@ func TestPostgresStoreDefaultPollInterval(t *testing.T) {
 	store := NewPostgresStore(nil, 0)
 	if store.pollInterval != time.Second {
 		t.Fatalf("poll interval = %s, want 1s", store.pollInterval)
+	}
+}
+
+func TestFollowNodeReportsDesiredRejectedAndAppliedRevisions(t *testing.T) {
+	revisions := make(chan Revision, 3)
+	revisions <- Revision{ID: 1}
+	revisions <- Revision{ID: 2}
+	revisions <- Revision{ID: 3}
+	close(revisions)
+
+	statuses := &testNodeStatusStore{}
+	err := FollowNode(context.Background(), &testStore{revisions: revisions}, testActivator{reject: 2}, statuses, NodeStatus{
+		NodeID:   "8f196376-f209-4e21-ae03-fec14d77d0d7",
+		NodeRole: "data-plane",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(statuses.updates) != 7 {
+		t.Fatalf("status updates = %d, want 7", len(statuses.updates))
+	}
+	rejected := statuses.updates[4]
+	if rejected.ConfigRevision != 2 || rejected.AppliedRevision != 1 || rejected.LastError != "invalid configuration" {
+		t.Fatalf("rejected status = %+v", rejected)
+	}
+	final := statuses.updates[6]
+	if final.ConfigRevision != 3 || final.AppliedRevision != 3 || final.LastError != "" {
+		t.Fatalf("final status = %+v", final)
+	}
+}
+
+func TestFollowNodeStopsWhenConvergenceCannotBeReported(t *testing.T) {
+	reportErr := errors.New("status database unavailable")
+	err := FollowNode(context.Background(), &testStore{revisions: make(chan Revision)}, testActivator{},
+		&testNodeStatusStore{err: reportErr}, NodeStatus{NodeID: "node-1", NodeRole: "data-plane"})
+	if !errors.Is(err, reportErr) {
+		t.Fatalf("error = %v, want %v", err, reportErr)
 	}
 }
