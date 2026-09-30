@@ -1,6 +1,7 @@
 package acme
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -290,6 +291,13 @@ func (a *AutoRenewer) HandleACMEEmail(w http.ResponseWriter, r *http.Request) {
 // certificate folder and return a list of certs that is renewed in this call
 // Return string array with length 0 when no cert is expired
 func (a *AutoRenewer) CheckAndRenewCertificates() ([]string, error) {
+	return a.CheckAndRenewCertificatesContext(context.Background())
+}
+
+func (a *AutoRenewer) CheckAndRenewCertificatesContext(ctx context.Context) ([]string, error) {
+	if ctx == nil {
+		return nil, errors.New("ACME renewal context is required")
+	}
 	certFolder := a.CertFolder
 	files, err := os.ReadDir(certFolder)
 	if err != nil {
@@ -352,7 +360,7 @@ func (a *AutoRenewer) CheckAndRenewCertificates() ([]string, error) {
 		}
 	}
 
-	return a.renewExpiredDomains(expiredCertList)
+	return a.renewExpiredDomainsContext(ctx, expiredCertList)
 }
 
 // Close the auto renewer
@@ -365,8 +373,15 @@ func (a *AutoRenewer) Close() {
 // Renew the certificate by filename extract all DNS name from the
 // certificate and renew them one by one by calling to the acmeHandler
 func (a *AutoRenewer) renewExpiredDomains(certs []*ExpiredCerts) ([]string, error) {
+	return a.renewExpiredDomainsContext(context.Background(), certs)
+}
+
+func (a *AutoRenewer) renewExpiredDomainsContext(ctx context.Context, certs []*ExpiredCerts) ([]string, error) {
 	renewedCertFiles := []string{}
 	for _, expiredCert := range certs {
+		if err := ctx.Err(); err != nil {
+			return renewedCertFiles, err
+		}
 		a.Logf("Renewing "+expiredCert.Filepath+" (Might take a few minutes)", nil)
 		fileName := filepath.Base(expiredCert.Filepath)
 		certName := fileName[:len(fileName)-len(filepath.Ext(fileName))]
@@ -406,7 +421,7 @@ func (a *AutoRenewer) renewExpiredDomains(certs []*ExpiredCerts) ([]string, erro
 			a.Logf("Could not extract SANs from PEM for "+fileName+", using original domains", errSan)
 		}
 
-		_, err = a.AcmeHandler.ObtainCert(expiredCert.Domains, certName, a.RenewerConfig.Email, certInfo.AcmeName, certInfo.AcmeUrl, certInfo.SkipTLS, certInfo.UseDNS, certInfo.PropTimeout, dnsServers, certInfo.DisableRecursiveNssCheck, certInfo.DisableAuthoritativeNssCheck)
+		_, err = a.AcmeHandler.ObtainCertContext(ctx, expiredCert.Domains, certName, a.RenewerConfig.Email, certInfo.AcmeName, certInfo.AcmeUrl, certInfo.SkipTLS, certInfo.UseDNS, certInfo.PropTimeout, dnsServers, certInfo.DisableRecursiveNssCheck, certInfo.DisableAuthoritativeNssCheck)
 		if err != nil {
 			a.Logf("Renew "+fileName+"("+strings.Join(expiredCert.Domains, ",")+") failed", err)
 		} else {

@@ -89,6 +89,8 @@ func TestParseCertificateMetadataRejectsUnknownOrMissingName(t *testing.T) {
 		json.RawMessage(`{}`),
 		json.RawMessage(`{"name":"example.test","unexpected":true}`),
 		json.RawMessage(`{"name":"example.test"}{}`),
+		json.RawMessage(`{"name":"../example.test"}`),
+		json.RawMessage(`{"name":"example.test","auto_renew":true}`),
 	} {
 		if _, err := ParseCertificateMetadata(payload); err == nil {
 			t.Fatalf("metadata %s was accepted", payload)

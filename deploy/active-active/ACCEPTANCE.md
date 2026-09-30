@@ -31,6 +31,9 @@ success as full product acceptance.
 | Certificate revision | Both data nodes serve the committed certificate revision | | |
 | Invalid certificate/key pair | HTTP 422; previous certificate remains active | | |
 | Certificate key exposure | API responses and PostgreSQL rows contain no plaintext private key | | |
+| Controller lease contention | Exactly one candidate runs ACME renewal | | |
+| Controller lease loss | In-flight CA context is cancelled; another candidate takes over | | |
+| Renewed certificate | New encrypted revision converges on both data nodes | | |
 | PostgreSQL primary failure | Synchronous replica promotes; nodes recover | | |
 | One data-node failure | L4 removes only failed node | | |
 | Long-lived request during update | Existing request completes on old snapshot | | |
@@ -39,6 +42,6 @@ success as full product acceptance.
 | Full Go race suite | `go test -race ./...` passes in Docker | | |
 | Static/build gates | `go vet ./...` and `go build ./...` pass in Docker | | |
 
-Full active/active acceptance remains blocked until ACME, access rules,
-authentication, redirects and stream proxies use the same
+Full active/active acceptance remains blocked until central ACME account state,
+access rules, authentication, redirects and stream proxies use the same
 transactional revision lifecycle.

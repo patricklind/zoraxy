@@ -35,7 +35,8 @@ Write the complete PostgreSQL DSN as one line in
 identical key on the control plane and every data node. Losing or rotating this
 key without re-encrypting the stored revisions makes the private keys
 unreadable. Edit
-`/etc/zoraxy/cluster.env` for either `control-plane` or `data-plane`, then run:
+`/etc/zoraxy/cluster.env` for `control-plane`, `data-plane` or
+`certificate-controller`, then run:
 
 ```sh
 systemctl daemon-reload
@@ -58,3 +59,9 @@ for rollback.
 Do not configure two LXC data nodes against a shared `/opt/zoraxy` filesystem.
 Each node keeps separate local runtime state; PostgreSQL is shared only for the
 transactional configuration domains.
+
+For controller candidates, keep `/opt/zoraxy/conf/certs` private because the
+legacy ACME engine stages decrypted key material there during renewal. Only the
+lease holder renews; a lost lease cancels the CA request. The ACME account is
+still stored in that candidate's local database, so preserve it across updates
+until account state has also been migrated centrally.

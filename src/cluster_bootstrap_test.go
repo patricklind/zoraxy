@@ -39,6 +39,24 @@ func TestPostgresConfigBackendSelectedSupportsExplicitAndPreviewConfiguration(t 
 	}
 }
 
+func TestLoadClusterConfigAcceptsCertificateController(t *testing.T) {
+	config, err := loadClusterConfig(clusterTestEnvironment(map[string]string{
+		"ZORAXY_CONFIG_BACKEND":                   "postgresql",
+		"ZORAXY_CONFIGSTORE_MODE":                 "certificate-controller",
+		"ZORAXY_CONFIGSTORE_MIGRATION_MODE":       "verify",
+		"ZORAXY_CONFIGSTORE_DSN":                  "postgres://example/zoraxy",
+		"ZORAXY_CONFIGSTORE_CERTIFICATE_KEY_FILE": "/run/secrets/certificate-key",
+	}), func(string) ([]byte, error) {
+		return []byte("0123456789abcdef0123456789abcdef"), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.mode != clusterModeCertificateController {
+		t.Fatalf("mode = %q", config.mode)
+	}
+}
+
 func TestLoadClusterConfigReadsDSNSecret(t *testing.T) {
 	config, err := loadClusterConfig(clusterTestEnvironment(map[string]string{
 		"ZORAXY_CONFIG_BACKEND":                   "postgresql",

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -29,8 +30,10 @@ type CertificateRevision struct {
 }
 
 type CertificateMetadata struct {
-	Name     string `json:"name"`
-	Fallback bool   `json:"fallback"`
+	Name      string          `json:"name"`
+	Fallback  bool            `json:"fallback"`
+	AutoRenew bool            `json:"auto_renew,omitempty"`
+	ACME      json.RawMessage `json:"acme,omitempty"`
 }
 
 func ParseCertificateMetadata(payload json.RawMessage) (CertificateMetadata, error) {
@@ -46,6 +49,12 @@ func ParseCertificateMetadata(payload json.RawMessage) (CertificateMetadata, err
 	metadata.Name = strings.TrimSpace(metadata.Name)
 	if metadata.Name == "" {
 		return CertificateMetadata{}, errors.New("certificate metadata name is required")
+	}
+	if metadata.Name != filepath.Base(metadata.Name) || strings.ContainsAny(metadata.Name, `/\`) {
+		return CertificateMetadata{}, errors.New("certificate metadata name must be a safe file name")
+	}
+	if metadata.AutoRenew && (len(metadata.ACME) == 0 || !json.Valid(metadata.ACME)) {
+		return CertificateMetadata{}, errors.New("auto-renew certificate metadata requires ACME configuration")
 	}
 	return metadata, nil
 }
@@ -185,6 +194,22 @@ func (s *PostgresStore) CommitCertificate(ctx context.Context, expectedRevision 
 	}
 	if current != expectedRevision {
 		return CertificateRevision{}, ErrRevisionConflict
+	}
+	var duplicateName bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM (
+				SELECT DISTINCT ON (certificate_id) certificate_id, metadata
+				FROM certificate_revisions
+				WHERE certificate_id <> $1
+				ORDER BY certificate_id, revision DESC
+			) latest
+			WHERE metadata->>'name' = $2
+		)`, certificate.CertificateID, metadata.Name).Scan(&duplicateName); err != nil {
+		return CertificateRevision{}, err
+	}
+	if duplicateName {
+		return CertificateRevision{}, errors.New("another certificate already uses this metadata name")
 	}
 	if metadata.Fallback {
 		var anotherFallback bool

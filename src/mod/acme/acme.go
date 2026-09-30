@@ -103,7 +103,15 @@ func (a *ACMEHandler) writeFileWithMode(filename string, data []byte, mode os.Fi
 
 // ObtainCert obtains a certificate for the specified domains.
 func (a *ACMEHandler) ObtainCert(domains []string, certificateName string, email string, caName string, caUrl string, skipTLS bool, useDNS bool, propagationTimeout int, dnsServers string, disableRecursiveNssCheck bool, disableAuthoritativeNssCheck bool) (bool, error) {
-	ctx := context.TODO()
+	return a.ObtainCertContext(context.Background(), domains, certificateName, email, caName, caUrl, skipTLS, useDNS, propagationTimeout, dnsServers, disableRecursiveNssCheck, disableAuthoritativeNssCheck)
+}
+
+// ObtainCertContext allows lease-elected callers to cancel CA operations as
+// soon as leadership is lost.
+func (a *ACMEHandler) ObtainCertContext(ctx context.Context, domains []string, certificateName string, email string, caName string, caUrl string, skipTLS bool, useDNS bool, propagationTimeout int, dnsServers string, disableRecursiveNssCheck bool, disableAuthoritativeNssCheck bool) (bool, error) {
+	if ctx == nil {
+		return false, errors.New("ACME context is required")
+	}
 
 	a.Logf("Obtaining certificate for: "+strings.Join(domains, ", "), nil)
 

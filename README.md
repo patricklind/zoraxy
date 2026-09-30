@@ -127,9 +127,11 @@ engine and does not accept `postgresql`.
 PostgreSQL is not a replacement value for `-db` or `DB`. Select
 `ZORAXY_CONFIG_BACKEND=postgresql` and one configstore role instead. See the
 [active/active guide](deploy/active-active/README.md) for the exact boundary:
-ACME automation, access rules, redirects, streams, users and plugins are not
-yet transactional. Certificate revisions are transactional, encrypted and
-atomically activated when the external certificate-key secret is configured.
+ACME certificate renewal is lease-elected and publishes transactional
+certificate revisions, but ACME account registration remains local to each
+controller candidate. Access rules, redirects, streams, users and plugins are
+not yet transactional. Certificate revisions are encrypted and atomically
+activated when the external certificate-key secret is configured.
 
 Health probes are available at `/health/live` and `/health/ready`. Readiness
 checks local database access, loaded proxy configuration and bound listeners;

@@ -2,9 +2,10 @@
 
 This directory contains the implemented phase-2 foundation. It can run a
 separate authenticated control-plane process and PostgreSQL-backed HTTP-routing
-data nodes. Certificate/key revisions are now transactional and private keys
-are AES-256-GCM encrypted, but ACME renewal, access rules, redirects, stream
-proxies, users and plugins are not yet transactional. Do not call the overall
+data nodes. Certificate/key revisions are transactional, private keys are
+AES-256-GCM encrypted, and renewal is lease-elected. ACME account state,
+access rules, redirects, stream proxies, users and plugins are not yet
+transactional. Do not call the overall
 product production-ready active/active until those remaining domains are moved.
 
 `src/mod/configstore` defines immutable revisions, compare-and-swap commits,
@@ -64,6 +65,10 @@ With the PostgreSQL backend, enable exactly one role per process:
   is enabled.
 - `ZORAXY_CONFIGSTORE_MODE=data-plane` requires an existing revision, validates
   and activates it before readiness succeeds, then follows later revisions.
+- `ZORAXY_CONFIGSTORE_MODE=certificate-controller` competes for the PostgreSQL
+  lease, renews only certificates whose metadata enables `auto_renew`, and
+  publishes each renewed pair as a compare-and-swap revision. Run at least two
+  controller candidates, but only the current lease holder contacts the CA.
 
 Both modes require `ZORAXY_CONFIGSTORE_MIGRATION_MODE=verify|apply`, a
 PostgreSQL connection. Supply the full connection string through a Docker
@@ -137,7 +142,7 @@ The response must include `node_role=data-plane`, equal non-zero
 | Variable | Required value or default | Purpose |
 | --- | --- | --- |
 | `ZORAXY_CONFIG_BACKEND` | `local` (default) or `postgresql` | Selects the authoritative configuration backend |
-| `ZORAXY_CONFIGSTORE_MODE` | `control-plane` or `data-plane` with PostgreSQL | Selects exactly one process role |
+| `ZORAXY_CONFIGSTORE_MODE` | `control-plane`, `data-plane` or `certificate-controller` | Selects exactly one PostgreSQL process role |
 | `ZORAXY_CONFIGSTORE_MIGRATION_MODE` | `verify` or `apply` | Verifies the exact schema or installs schema version 1 |
 | `ZORAXY_CONFIGSTORE_DSN_FILE` | Preferred secret-file path | Reads the complete PostgreSQL DSN without an environment secret |
 | `ZORAXY_CONFIGSTORE_DSN` | Test environments only | Supplies the DSN directly; mutually exclusive with the file variable |
@@ -175,7 +180,12 @@ with `GET /api/cluster/certificates?id=<uuid>`:
 ```json
 {
   "certificate_id": "38a4e4d3-4ef6-4b36-ac2a-d784d18d6977",
-  "metadata": {"name": "example.com", "fallback": true},
+  "metadata": {
+    "name": "example.com",
+    "fallback": true,
+    "auto_renew": true,
+    "acme": {"acme_name": "Let's Encrypt", "dns": false}
+  },
   "certificate_pem": "<base64 PEM>",
   "private_key_pem": "<base64 PEM>"
 }
@@ -185,11 +195,16 @@ Every data node decrypts and validates the complete latest snapshot off-path,
 then swaps it atomically for new TLS handshakes. A malformed revision leaves
 the previous snapshot active. Decrypted keys stay in process memory.
 
-ACME issuance, renewal settings and the renewal ticker are fail-closed when the
-PostgreSQL backend is selected. The legacy endpoints return HTTP 409 instead of
-creating node-local certificates or allowing duplicate CA requests. Upload
-reviewed certificate revisions through the cluster certificate API until the
-lease-elected controller is implemented.
+Legacy ACME mutation endpoints and the old ticker are fail-closed when the
+PostgreSQL backend is selected. They return HTTP 409 instead of creating
+node-local certificates. Automatic renewal runs only in the lease-elected
+`certificate-controller`; loss of the lease cancels the in-flight CA context.
+Health responses expose `certificate_controller_leader=true` only on the
+current lease holder; standby candidates remain healthy without that field.
+The controller stages decrypted keys in `conf/certs` while invoking the legacy
+ACME engine, so that path must be private, persistent and preferably backed by
+encrypted storage or tmpfs. Certificate revisions remain authoritative in
+PostgreSQL.
 
 Two additional authenticated, read-only migration endpoints are available on
 the control plane:
@@ -228,7 +243,7 @@ docker run --rm -v "$PWD":/workspace:ro golang:1.26 sh -c \
 | Ready returns 503 with `checks.config_store=false` | Revision follower stopped or initial activation failed |
 | Desired revision is above applied revision | Candidate validation failed; inspect `last_error` in `/api/cluster/nodes` |
 | Control plane refuses startup | Management authentication is disabled (`NOAUTH=true`) |
-| ACME endpoint returns 409 | Expected with PostgreSQL until the lease-elected controller is enabled |
+| Legacy ACME endpoint returns 409 | Expected with PostgreSQL; configure renewal in certificate metadata and run controller candidates |
 | `DB=postgresql` startup error | PostgreSQL must be selected with `ZORAXY_CONFIG_BACKEND`, not the local DB selector |
 | LXC works locally but ignores cluster variables | Missing systemd drop-in, unreadable DSN file or installed release predates this bootstrap |
 
@@ -242,8 +257,9 @@ docker run --rm -v "$PWD":/workspace:ro golang:1.26 sh -c \
    then they can still change local state and must not be used for cluster
    configuration.
 4. Add listener-conflict validation to the existing off-path candidate builder.
-5. Wire ACME renewal to the implemented lease election and encrypted
-   certificate repository; only the current controller may contact the CA.
+5. Move the ACME account registration itself out of the controller's local
+   database into encrypted central state, then add a lease-aware manual-renew
+   control-plane operation.
 6. Export logs, statistics and uptime data to external sinks. They are not part
    of the configuration transaction or its RPO guarantee.
 7. Put both data nodes behind a redundant L4 frontend supporting TCP and UDP.

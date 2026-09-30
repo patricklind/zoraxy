@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	configBackendLocal      = "local"
-	configBackendPostgreSQL = "postgresql"
-	clusterModeDisabled     = "disabled"
-	clusterModeControlPlane = "control-plane"
-	clusterModeDataPlane    = "data-plane"
+	configBackendLocal               = "local"
+	configBackendPostgreSQL          = "postgresql"
+	clusterModeDisabled              = "disabled"
+	clusterModeControlPlane          = "control-plane"
+	clusterModeDataPlane             = "data-plane"
+	clusterModeCertificateController = "certificate-controller"
 )
 
 type clusterConfig struct {
@@ -73,9 +74,9 @@ func loadClusterConfig(getenv environmentLookup, readFile secretReader) (cluster
 		return config, nil
 	}
 	if config.mode == "" || config.mode == clusterModeDisabled {
-		return clusterConfig{}, errors.New("PostgreSQL configuration backend requires control-plane or data-plane mode")
+		return clusterConfig{}, errors.New("PostgreSQL configuration backend requires control-plane, data-plane or certificate-controller mode")
 	}
-	if config.mode != clusterModeControlPlane && config.mode != clusterModeDataPlane {
+	if config.mode != clusterModeControlPlane && config.mode != clusterModeDataPlane && config.mode != clusterModeCertificateController {
 		return clusterConfig{}, fmt.Errorf("invalid ZORAXY_CONFIGSTORE_MODE %q", config.mode)
 	}
 	if config.migrationMode != "verify" && config.migrationMode != "apply" {
@@ -257,6 +258,27 @@ func (p *preparedCluster) Start(authRouter *auth.RouterDef) error {
 			return err
 		}
 		configStoreReady.Store(true)
+		return nil
+	}
+	if p.config.mode == clusterModeCertificateController {
+		store, ok := p.store.(*configstore.PostgresStore)
+		if !ok {
+			p.db.Close()
+			return errors.New("certificate controller requires PostgreSQL configstore")
+		}
+		configStoreReady.Store(true)
+		go func() {
+			worker := func(ctx context.Context) error {
+				certificateControllerLeader.Store(true)
+				defer certificateControllerLeader.Store(false)
+				return p.runCertificateControllerWorker(ctx)
+			}
+			err := configstore.RunCertificateControllerLease(context.Background(), store, nodeUUID, 30*time.Second, worker)
+			configStoreReady.Store(false)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				SystemWideLogger.PrintAndLog("certificate-controller", "Controller stopped", err)
+			}
+		}()
 		return nil
 	}
 

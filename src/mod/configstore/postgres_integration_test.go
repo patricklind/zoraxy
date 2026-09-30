@@ -152,6 +152,14 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}, box); err == nil {
 		t.Fatal("second fallback certificate was accepted")
 	}
+	if _, err := store.CommitCertificate(ctx, 0, CertificateRevision{
+		CertificateID:  "5adb79f2-b040-4939-a01a-06c131d1d173",
+		Metadata:       json.RawMessage(`{"name":"example.test"}`),
+		CertificatePEM: certificatePEM,
+		PrivateKeyPEM:  privateKeyPEM,
+	}, box); err == nil {
+		t.Fatal("duplicate certificate metadata name was accepted")
+	}
 
 	holderA := "f2e31343-f734-42f3-b5e8-72975ce354a7"
 	holderB := "d61524c2-2265-4245-ae91-668cfdfda695"

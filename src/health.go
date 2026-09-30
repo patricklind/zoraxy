@@ -9,24 +9,29 @@ import (
 )
 
 var (
-	desiredConfigRevision atomic.Uint64
-	appliedConfigRevision atomic.Uint64
-	configStoreReady      atomic.Bool
+	desiredConfigRevision       atomic.Uint64
+	appliedConfigRevision       atomic.Uint64
+	configStoreReady            atomic.Bool
+	certificateControllerLeader atomic.Bool
 )
 
 type healthResponse struct {
-	Status          string          `json:"status"`
-	NodeID          string          `json:"node_id,omitempty"`
-	NodeRole        string          `json:"node_role"`
-	ConfigRevision  uint64          `json:"config_revision"`
-	AppliedRevision uint64          `json:"applied_revision"`
-	Checks          map[string]bool `json:"checks,omitempty"`
+	Status                      string          `json:"status"`
+	NodeID                      string          `json:"node_id,omitempty"`
+	NodeRole                    string          `json:"node_role"`
+	ConfigRevision              uint64          `json:"config_revision"`
+	AppliedRevision             uint64          `json:"applied_revision"`
+	Checks                      map[string]bool `json:"checks,omitempty"`
+	CertificateControllerLeader bool            `json:"certificate_controller_leader,omitempty"`
 }
 
 type readinessChecker func() map[string]bool
 
 func nodeRole() string {
 	role := strings.TrimSpace(os.Getenv("ZORAXY_NODE_ROLE"))
+	if role == "" {
+		role = strings.TrimSpace(os.Getenv("ZORAXY_CONFIGSTORE_MODE"))
+	}
 	if role == "" {
 		return "standalone"
 	}
@@ -79,11 +84,12 @@ func handleLiveness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeHealthJSON(w, http.StatusOK, healthResponse{
-		Status:          "live",
-		NodeID:          nodeUUID,
-		NodeRole:        nodeRole(),
-		ConfigRevision:  desiredConfigRevision.Load(),
-		AppliedRevision: appliedConfigRevision.Load(),
+		Status:                      "live",
+		NodeID:                      nodeUUID,
+		NodeRole:                    nodeRole(),
+		ConfigRevision:              desiredConfigRevision.Load(),
+		AppliedRevision:             appliedConfigRevision.Load(),
+		CertificateControllerLeader: certificateControllerLeader.Load(),
 	})
 }
 
@@ -103,12 +109,13 @@ func readinessHandler(check readinessChecker) http.HandlerFunc {
 			status = "ready"
 		}
 		writeHealthJSON(w, statusCode, healthResponse{
-			Status:          status,
-			NodeID:          nodeUUID,
-			NodeRole:        nodeRole(),
-			ConfigRevision:  desiredConfigRevision.Load(),
-			AppliedRevision: appliedConfigRevision.Load(),
-			Checks:          checks,
+			Status:                      status,
+			NodeID:                      nodeUUID,
+			NodeRole:                    nodeRole(),
+			ConfigRevision:              desiredConfigRevision.Load(),
+			AppliedRevision:             appliedConfigRevision.Load(),
+			CertificateControllerLeader: certificateControllerLeader.Load(),
+			Checks:                      checks,
 		})
 	}
 }
@@ -125,12 +132,13 @@ func handleClusterStatus(w http.ResponseWriter, r *http.Request) {
 		status = "ready"
 	}
 	writeHealthJSON(w, http.StatusOK, healthResponse{
-		Status:          status,
-		NodeID:          nodeUUID,
-		NodeRole:        nodeRole(),
-		ConfigRevision:  desiredConfigRevision.Load(),
-		AppliedRevision: appliedConfigRevision.Load(),
-		Checks:          checks,
+		Status:                      status,
+		NodeID:                      nodeUUID,
+		NodeRole:                    nodeRole(),
+		ConfigRevision:              desiredConfigRevision.Load(),
+		AppliedRevision:             appliedConfigRevision.Load(),
+		CertificateControllerLeader: certificateControllerLeader.Load(),
+		Checks:                      checks,
 	})
 }
 

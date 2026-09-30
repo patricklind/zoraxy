@@ -7,6 +7,28 @@ import (
 	"testing"
 )
 
+func TestNodeRoleFallsBackToConfigstoreMode(t *testing.T) {
+	t.Setenv("ZORAXY_NODE_ROLE", "")
+	t.Setenv("ZORAXY_CONFIGSTORE_MODE", "certificate-controller")
+	if got := nodeRole(); got != "certificate-controller" {
+		t.Fatalf("node role = %q", got)
+	}
+}
+
+func TestLivenessReportsCertificateControllerLeadership(t *testing.T) {
+	certificateControllerLeader.Store(true)
+	t.Cleanup(func() { certificateControllerLeader.Store(false) })
+	recorder := httptest.NewRecorder()
+	handleLiveness(recorder, httptest.NewRequest(http.MethodGet, "/health/live", nil))
+	var response healthResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.CertificateControllerLeader {
+		t.Fatal("controller leadership was not reported")
+	}
+}
+
 func TestLivenessIsPublicAndDoesNotDependOnReadiness(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	rec := httptest.NewRecorder()
